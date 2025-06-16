@@ -1,0 +1,58 @@
+# More information about the configuration file can be found here:
+# https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-config.html
+version = 0.1
+
+# NOTE: This configuration file defines different stacks, but does not itself
+# determine which AWS account to use. To deploy to different accounts, use
+# the --profile option with the appropriate AWS CLI profile, e.g.:
+# sam deploy --config-env prod --profile prod-account
+# sam deploy --config-env dev --profile dev-account
+
+[default]
+[default.global.parameters]
+stack_name = "unowned"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[prod]
+[prod.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+resolve_s3 = true
+stack_name = "unowned"
+s3_prefix = "unowned"
+region = "us-east-2"
+image_repositories = []
+disable_rollback = false
+resolve_image_repos = true
+parameter_overrides = "Environment=prod StageName=Prod"
+
+[default.package.parameters]
+resolve_s3 = true
+
+[default.sync.parameters]
+watch = true
+
+[default.local_start_api.parameters]
+warm_containers = "EAGER"
+
+[default.local_start_lambda.parameters]
+warm_containers = "EAGER"
+
+[dev]
+[dev.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+resolve_s3 = true
+image_repositories = []
+disable_rollback = false
+resolve_image_repos = true
+stack_name = "unowned-dev"
+s3_prefix = "unowned-dev"
+region = "us-east-2"
+parameter_overrides = "Environment=dev StageName=Dev"

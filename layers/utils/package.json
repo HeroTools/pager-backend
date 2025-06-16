@@ -1,0 +1,14 @@
+{
+    "name": "shared-core",
+    "version": "1.0.0",
+    "main": "index.js",
+    "types": "index.d.ts",
+    "files": [
+        "index.js",
+        "index.d.ts",
+        "lib/**/*"
+    ],
+    "dependencies": {
+        "@supabase/supabase-js": "^2.49.8"
+    }
+}
