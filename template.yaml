@@ -1,0 +1,1116 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  dex-api
+
+Parameters:
+  StageName:
+    Type: String
+    Default: Prod
+    Description: "The stage name for the deployment (Dev or Prod)"
+    AllowedValues:
+      - Dev
+      - Prod
+
+Conditions:
+  IsDev: !Equals [!Ref StageName, Dev]
+  IsProd: !Equals [!Ref StageName, Prod]
+
+Globals:
+  Function:
+    Timeout: 180
+    MemorySize: 512
+    Environment:
+      Variables:
+        OPENAI_API_KEY: ***REMOVED***
+        GOOGLE_CLIENT_ID: ***REMOVED***
+        GOOGLE_CLIENT_SECRET: ***REMOVED***
+        SUPABASE_URL: !If
+          - IsDev
+          - ***REMOVED***
+          - !If
+            - IsProd
+            - ***REMOVED***
+            - ***REMOVED***
+        SUPABASE_ANON_KEY: !If
+          - IsDev
+          - ***REMOVED***
+          - !If
+            - IsProd
+            - ***REMOVED***
+            - ***REMOVED***
+        SUPABASE_SERVICE_ROLE_KEY: !If
+          - IsDev
+          - ***REMOVED***
+          - !If
+            - IsProd
+            - ***REMOVED***
+            - ***REMOVED***
+        PG_USER: !If
+          - IsDev
+          - ***REMOVED***
+          - !If
+            - IsProd
+            - ***REMOVED***
+            - ***REMOVED***
+        PG_HOST: !If
+          - IsDev
+          - ***REMOVED***
+          - !If
+            - IsProd
+            - ***REMOVED***
+            - ***REMOVED***
+        PG_DATABASE: ***REMOVED***
+        PG_PASSWORD: !If
+          - IsDev
+          - ***REMOVED***
+          - !If
+            - IsProd
+            - ***REMOVED***
+            - ***REMOVED***
+        PG_PORT: 6543
+        APP_URL_BASE: !If
+          - IsDev
+          - "***REMOVED***"
+          - !If
+            - IsProd
+            - "https://app.askbex.ai"
+            - "https://app.askbex.ai"
+        ALLOWED_ORIGINS: "https://app.askbex.ai,***REMOVED***,https://bex-*.vercel.app"
+  Api:
+    Cors:
+      AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+      AllowOrigin: "'*'"
+      MaxAge: "'3600'"
+      AllowMethods: "'OPTIONS,POST,GET,PUT,DELETE'"
+      AllowCredentials: "'true'"
+
+Resources:
+  MainApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref StageName
+      Cors:
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+        MaxAge: "'3600'"
+        AllowMethods: "'OPTIONS,POST,GET,PUT,DELETE'"
+        AllowCredentials: "'true'"
+      GatewayResponses:
+        DEFAULT_4xx:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Methods: "'OPTIONS,POST,GET,PUT,DELETE'"
+              Access-Control-Allow-Credentials: "'true'"
+        DEFAULT_5xx:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Methods: "'OPTIONS,POST,GET,PUT,DELETE'"
+              Access-Control-Allow-Credentials: "'true'"
+
+  SharedUtilsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: shared-utils
+      Description: Shared utilities for Lambda functions
+      ContentUri: ./layers/utils
+      CompatibleRuntimes:
+        - nodejs20.x
+      RetentionPolicy: Retain
+
+  # CREATE WORKSPACE
+  CreateWorkspaceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/workspaces/create
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        CreateWorkspace:
+          Type: Api
+          Properties:
+            Path: /workspaces
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET WORKSPACES
+  GetWorkspacesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/workspaces/get
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetWorkspaces:
+          Type: Api
+          Properties:
+            Path: /workspaces
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET WORKSPACE BY ID
+  GetWorkspaceByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/workspaces/get-by-id
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetWorkspaceById:
+          Type: Api
+          Properties:
+            Path: /workspaces/{id}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # UPDATE WORKSPACE
+  UpdateWorkspaceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/workspaces/update
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        UpdateWorkspace:
+          Type: Api
+          Properties:
+            Path: /workspaces/{id}
+            Method: put
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # DELETE WORKSPACE
+  DeleteWorkspaceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/workspaces/delete
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        DeleteWorkspace:
+          Type: Api
+          Properties:
+            Path: /workspaces/{id}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # JOIN WORKSPACE
+  JoinWorkspaceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/workspaces/join
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        JoinWorkspace:
+          Type: Api
+          Properties:
+            Path: /workspaces/join
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GENERATE NEW JOIN CODE
+  GenerateNewJoinCodeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/workspaces/new-join-code
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GenerateNewJoinCode:
+          Type: Api
+          Properties:
+            Path: /workspaces/{id}/join-code
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # CREATE MESSAGE
+  CreateMessageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/messages/create
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        CreateMessage:
+          Type: Api
+          Properties:
+            Path: /messages
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET MESSAGES
+  GetMessagesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/messages/get
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetMessages:
+          Type: Api
+          Properties:
+            Path: /messages
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET MESSAGE BY ID
+  GetMessageByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/messages/get-by-id
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetMessageById:
+          Type: Api
+          Properties:
+            Path: /messages/{id}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # UPDATE MESSAGE
+  UpdateMessageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/messages/update
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        UpdateMessage:
+          Type: Api
+          Properties:
+            Path: /messages/{id}
+            Method: put
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # DELETE MESSAGE
+  DeleteMessageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/messages/delete
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        DeleteMessage:
+          Type: Api
+          Properties:
+            Path: /messages/{id}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET CHANNELS
+  GetChannelsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels/get
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetChannels:
+          Type: Api
+          Properties:
+            Path: /channels
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # CREATE CHANNEL
+  CreateChannelFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels/create
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        CreateChannel:
+          Type: Api
+          Properties:
+            Path: /channels
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET CHANNEL BY ID
+  GetChannelByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels/get-by-id
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetChannelById:
+          Type: Api
+          Properties:
+            Path: /channels/{id}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # UPDATE CHANNEL
+  UpdateChannelFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels/update
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        UpdateChannel:
+          Type: Api
+          Properties:
+            Path: /channels/{id}
+            Method: put
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # DELETE CHANNEL
+  DeleteChannelFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels/delete
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        DeleteChannel:
+          Type: Api
+          Properties:
+            Path: /channels/{id}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # CREATE OR GET CONVERSATION
+  CreateOrGetConversationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/conversations/create-or-get
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        CreateOrGetConversation:
+          Type: Api
+          Properties:
+            Path: /conversations
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET CONVERSATIONS
+  GetConversationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/conversations/get
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetConversations:
+          Type: Api
+          Properties:
+            Path: /conversations
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET CONVERSATION BY ID
+  GetConversationByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/conversations/get-by-id
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetConversationById:
+          Type: Api
+          Properties:
+            Path: /conversations/{id}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # DELETE CONVERSATION
+  DeleteConversationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/conversations/delete
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        DeleteConversation:
+          Type: Api
+          Properties:
+            Path: /conversations/{id}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET CURRENT MEMBER
+  GetCurrentMemberFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/members/current
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetCurrentMember:
+          Type: Api
+          Properties:
+            Path: /members/current
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET MEMBERS
+  GetMembersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/members/get
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetMembers:
+          Type: Api
+          Properties:
+            Path: /members
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET MEMBER BY ID
+  GetMemberByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/members/get-by-id
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetMemberById:
+          Type: Api
+          Properties:
+            Path: /members/{id}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # UPDATE MEMBER
+  UpdateMemberFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/members/update
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        UpdateMember:
+          Type: Api
+          Properties:
+            Path: /members/{id}
+            Method: put
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # REMOVE MEMBER
+  RemoveMemberFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/members/remove
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        RemoveMember:
+          Type: Api
+          Properties:
+            Path: /members/{id}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # SIGN UP
+  SignUpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth/sign-up
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Environment:
+        Variables:
+          FRONTEND_URL: https://localhost:3000
+      Events:
+        SignUp:
+          Type: Api
+          Properties:
+            Path: /auth/sign-up
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # SIGN IN
+  SignInFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth/sign-in
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        SignIn:
+          Type: Api
+          Properties:
+            Path: /auth/sign-in
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # SIGN OUT
+  SignOutFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth/sign-out
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        SignOut:
+          Type: Api
+          Properties:
+            Path: /auth/sign-out
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET CURRENT USER
+  GetCurrentUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth/current-user
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetCurrentUser:
+          Type: Api
+          Properties:
+            Path: /auth/user
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # UPDATE PROFILE
+  UpdateProfileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth/update-profile
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        UpdateProfile:
+          Type: Api
+          Properties:
+            Path: /auth/profile
+            Method: put
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # RESET PASSWORD REQUEST
+  ResetPasswordRequestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth/reset-password-request
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Environment:
+        Variables:
+          FRONTEND_URL: https://localhost:3000
+      Events:
+        ResetPasswordRequest:
+          Type: Api
+          Properties:
+            Path: /auth/reset-password
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # UPDATE PASSWORD
+  UpdatePasswordFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth/update-password
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        UpdatePassword:
+          Type: Api
+          Properties:
+            Path: /auth/update-password
+            Method: put
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # REFRESH TOKEN
+  RefreshTokenFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth/refresh-token
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        RefreshToken:
+          Type: Api
+          Properties:
+            Path: /auth/refresh
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # VERIFY EMAIL
+  VerifyEmailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth/verify-email
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        VerifyEmail:
+          Type: Api
+          Properties:
+            Path: /auth/verify
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # TOGGLE REACTION
+  ToggleReactionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/reactions/toggle
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        ToggleReaction:
+          Type: Api
+          Properties:
+            Path: /reactions/toggle
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET REACTIONS
+  GetReactionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/reactions/get
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetReactions:
+          Type: Api
+          Properties:
+            Path: /reactions
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # REMOVE REACTION
+  RemoveReactionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/reactions/remove
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        RemoveReaction:
+          Type: Api
+          Properties:
+            Path: /reactions/{id}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET USER REACTIONS
+  GetUserReactionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/reactions/user-reactions
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetUserReactions:
+          Type: Api
+          Properties:
+            Path: /reactions/user
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET REACTION STATS
+  GetReactionStatsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/reactions/stats
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetReactionStats:
+          Type: Api
+          Properties:
+            Path: /reactions/stats/{messageId}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  InitiateGoogleAuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth/google-auth
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Tracing: Active
+      Environment:
+        Variables:
+          FRONTEND_URL: https://localhost:3000
+      Events:
+        InitiateGoogleAuth:
+          Type: Api
+          Properties:
+            Path: /auth/google
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
