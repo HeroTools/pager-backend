@@ -46,7 +46,7 @@ export const errorResponse = (
     const headers = { ...additionalHeaders };
     return {
         statusCode,
-        body: JSON.stringify({ error: message, ...errorDetails }),
+        body: JSON.stringify({ success: false, error: message, ...errorDetails }),
         headers,
     };
 };
@@ -55,7 +55,7 @@ export const successResponse = (body: unknown, statusCode = 200, additionalHeade
     const headers = { ...additionalHeaders };
     return {
         statusCode,
-        body: JSON.stringify(body),
+        body: JSON.stringify({ success: true, data: body }),
         headers,
     };
 };
