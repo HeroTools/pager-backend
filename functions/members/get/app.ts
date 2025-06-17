@@ -12,7 +12,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return successResponse([]);
         }
 
-        const workspaceId = event.queryStringParameters?.workspaceId;
+        const workspaceId = event.pathParameters?.workspaceId;
 
         if (!workspaceId) {
             return errorResponse('Workspace ID is required', 400);
@@ -27,17 +27,17 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         // Get all members of the workspace with user data
         const { data: members, error } = await supabase
-            .from('members')
+            .from('workspace_members')
             .select(
                 `
-          *,
-          users!inner(
-            id,
-            name,
-            image,
-            email
-          )
-        `,
+                *,
+                users!workspace_members_user_id_fkey1(
+                    id,
+                    name,
+                    image,
+                    email
+                )
+                `,
             )
             .eq('workspace_id', workspaceId)
             .order('created_at', { ascending: true });

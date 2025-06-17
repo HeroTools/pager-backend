@@ -423,7 +423,7 @@ Resources:
         GetChannels:
           Type: Api
           Properties:
-            Path: /channels
+            Path: /workspaces/{workspaceId}/channels
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -447,7 +447,7 @@ Resources:
         CreateChannel:
           Type: Api
           Properties:
-            Path: /channels
+            Path: /workspaces/{workspaceId}/channels
             Method: post
             RestApiId: !Ref MainApi
     Metadata:
@@ -471,7 +471,7 @@ Resources:
         GetChannelById:
           Type: Api
           Properties:
-            Path: /channels/{id}
+            Path: /workspaces/{workspaceId}/channels/{id}
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -495,7 +495,7 @@ Resources:
         UpdateChannel:
           Type: Api
           Properties:
-            Path: /channels/{id}
+            Path: /workspaces/{workspaceId}/channels/{id}
             Method: put
             RestApiId: !Ref MainApi
     Metadata:
@@ -519,7 +519,7 @@ Resources:
         DeleteChannel:
           Type: Api
           Properties:
-            Path: /channels/{id}
+            Path: /workspaces/{workspaceId}/channels/{id}
             Method: delete
             RestApiId: !Ref MainApi
     Metadata:
@@ -639,7 +639,7 @@ Resources:
         GetCurrentMember:
           Type: Api
           Properties:
-            Path: /members/current
+            Path: /workspaces/{workspaceId}/members/current
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -663,7 +663,7 @@ Resources:
         GetMembers:
           Type: Api
           Properties:
-            Path: /members
+            Path: /workspaces/{workspaceId}/members
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -687,7 +687,7 @@ Resources:
         GetMemberById:
           Type: Api
           Properties:
-            Path: /members/{id}
+            Path: /workspaces/{workspaceId}/members/{id}
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -711,7 +711,7 @@ Resources:
         UpdateMember:
           Type: Api
           Properties:
-            Path: /members/{id}
+            Path: /workspaces/{workspaceId}/members/{id}
             Method: put
             RestApiId: !Ref MainApi
     Metadata:
@@ -735,7 +735,7 @@ Resources:
         RemoveMember:
           Type: Api
           Properties:
-            Path: /members/{id}
+            Path: /workspaces/{workspaceId}/members/{id}
             Method: delete
             RestApiId: !Ref MainApi
     Metadata:

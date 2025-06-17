@@ -1,6 +1,6 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getUserIdFromToken } from './helpers/auth';
-import { getMember } from './helpers/get-member';
+import { getChannelMember } from './helpers/get-member';
 import { supabase } from './utils/supabase-client';
 import { successResponse, errorResponse } from './utils/response';
 
@@ -13,9 +13,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         }
 
         const channelId = event.pathParameters?.id;
+        const workspaceId = event.pathParameters?.workspaceId;
 
-        if (!channelId) {
-            return errorResponse('Channel ID is required', 400);
+        if (!channelId || !workspaceId) {
+            return errorResponse('Channel ID and workspace ID are required', 400);
         }
 
         // Get channel
@@ -29,10 +30,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Channel not found', 404);
         }
 
-        // Check if user is an admin of the workspace
-        const member = await getMember(channel.workspace_id, userId);
+        // Check if user is an admin of the channel
+        const channelMember = await getChannelMember(channelId, userId);
 
-        if (!member || member.role !== 'admin') {
+        if (!channelMember || channelMember.role !== 'admin') {
             return errorResponse('Admin access required', 403);
         }
 
