@@ -4,6 +4,8 @@ import { getMember } from './helpers/get-member';
 import { supabase } from './utils/supabase-client';
 import { successResponse, errorResponse } from './utils/response';
 
+// We will be fetching the messaging for the conversation here, in addition to the information that's related to the conversation.
+
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
         const userId = await getUserIdFromToken(event.headers.Authorization);

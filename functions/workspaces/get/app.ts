@@ -13,7 +13,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         // Get all workspace memberships for user
         const { data: members, error: membersError } = await supabase
-            .from('members')
+            .from('workspace_members')
             .select(
                 `
           workspace_id,
