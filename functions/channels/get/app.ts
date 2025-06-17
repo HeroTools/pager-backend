@@ -12,13 +12,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Unauthorized', 401);
         }
 
-        const workspaceId = event.queryStringParameters?.workspaceId;
+        const workspaceId = event.pathParameters?.workspaceId;
 
         if (!workspaceId) {
             return errorResponse('Workspace ID is required', 400);
         }
 
-        // Check if user is a member of the workspace
         const member = await getMember(workspaceId, userId);
 
         if (!member) {

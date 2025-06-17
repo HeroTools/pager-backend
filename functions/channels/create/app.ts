@@ -13,17 +13,18 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Unauthorized', 401);
         }
 
-        const { name, workspaceId } = JSON.parse(event.body || '{}');
+        const { name } = JSON.parse(event.body || '{}');
+
+        const workspaceId = event.pathParameters?.workspaceId;
 
         if (!name || !workspaceId) {
             return errorResponse('Name and workspaceId are required', 400);
         }
 
-        // Check if user is an admin of the workspace
         const member = await getMember(workspaceId, userId);
 
-        if (!member || member.role !== 'admin') {
-            return errorResponse('Admin access required', 403);
+        if (!member) {
+            return errorResponse('User is not a member of this workspace', 403);
         }
 
         const parsedName = parseChannelName(name);

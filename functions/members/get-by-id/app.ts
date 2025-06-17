@@ -13,18 +13,19 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         }
 
         const memberId = event.pathParameters?.id;
+        const workspaceId = event.pathParameters?.workspaceId;
 
-        if (!memberId) {
-            return errorResponse('Member ID is required', 400);
+        if (!memberId || !workspaceId) {
+            return errorResponse('Member ID and workspace ID are required', 400);
         }
 
         // Get the requested member with user data
         const { data: member, error } = await supabase
-            .from('members')
+            .from('workspace_members')
             .select(
                 `
           *,
-          users!inner(
+          users!workspace_members_user_id_fkey1(
             id,
             name,
             image,
@@ -32,7 +33,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           )
         `,
             )
-            .eq('id', memberId)
+            .eq('workspace_id', workspaceId)
+            .eq('user_id', memberId)
             .single();
 
         if (error || !member) {
@@ -40,7 +42,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         }
 
         // Check if current user is a member of the same workspace
-        const currentMember = await getMember(member.workspace_id, userId);
+        const currentMember = await getMember(workspaceId, userId);
 
         if (!currentMember) {
             return successResponse(null);

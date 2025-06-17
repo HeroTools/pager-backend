@@ -1,8 +1,8 @@
 import { supabase } from '../utils/supabase-client';
 
-const getMember = async (workspaceId: string, userId: string) => {
+const getWorkspaceMember = async (workspaceId: string, userId: string) => {
     const { data: member } = await supabase
-        .from('members')
+        .from('workspace_members')
         .select('*')
         .eq('workspace_id', workspaceId)
         .eq('user_id', userId)
@@ -11,4 +11,15 @@ const getMember = async (workspaceId: string, userId: string) => {
     return member;
 };
 
-export { getMember };
+const getChannelMember = async (channelId: string, userId: string) => {
+    const { data: member } = await supabase
+        .from('channel_members')
+        .select('role')
+        .eq('channel_id', channelId)
+        .eq('workspace_member_id', userId)
+        .single();
+
+    return member;
+};
+
+export { getWorkspaceMember, getChannelMember };
