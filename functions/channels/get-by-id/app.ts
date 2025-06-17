@@ -1,9 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getUserIdFromToken } from './helpers/auth';
-import { getMember } from './helpers/get-member';
+import { getWorkspaceMember } from './helpers/get-member';
 import { supabase } from './utils/supabase-client';
 import { successResponse, errorResponse } from './utils/response';
-
+// We will be fetching the messaging for the channel here, in addition to the information that's related to the channel.
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
         const userId = await getUserIdFromToken(event.headers.Authorization);
@@ -13,9 +13,37 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         }
 
         const channelId = event.pathParameters?.id;
+        const workspaceId = event.pathParameters?.workspaceId;
 
-        if (!channelId) {
-            return errorResponse('Channel ID is required', 400);
+        if (!channelId || !workspaceId) {
+            return errorResponse('Channel ID and workspace ID are required', 400);
+        }
+
+        const workspaceMember = await getWorkspaceMember(workspaceId, userId);
+
+        if (!workspaceMember) {
+            return errorResponse('Not a member of this workspace', 403);
+        }
+
+        // only get channel if they are a channel_member and workspace_member,
+        // OR workspace_member and the channel is type public
+        const { data: channelMember, error: channelMemberError } = await supabase
+            .from('channel_members')
+            .select('id')
+            .eq('channel_id', channelId)
+            .eq('workspace_member_id', workspaceMember.id)
+            .single();
+
+        if (channelMemberError || !channelMember) {
+            const { data: channel, error: channelError } = await supabase
+                .from('channels')
+                .select('id, channel_type')
+                .eq('id', channelId)
+                .single();
+
+            if (channelError || !channel || channel.channel_type !== 'public') {
+                return errorResponse('Not a member of this channel', 403);
+            }
         }
 
         // Get channel
@@ -23,13 +51,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         if (error || !channel) {
             return errorResponse('Channel not found', 404);
-        }
-
-        // Check if user is a member of the workspace
-        const member = await getMember(channel.workspace_id, userId);
-
-        if (!member) {
-            return errorResponse('Not a member of this workspace', 403);
         }
 
         return successResponse(channel);

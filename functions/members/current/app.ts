@@ -7,17 +7,21 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     try {
         const userId = await getUserIdFromToken(event.headers.Authorization);
 
+        console.log(userId);
+
         if (!userId) {
             return successResponse(null);
         }
 
-        const workspaceId = event.queryStringParameters?.workspaceId;
+        const workspaceId = event.pathParameters?.workspaceId;
 
         if (!workspaceId) {
             return errorResponse('Workspace ID is required', 400);
         }
 
         const member = await getMember(workspaceId, userId);
+
+        console.log(member);
 
         if (!member) {
             return successResponse(null);

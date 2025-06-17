@@ -13,16 +13,18 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         }
 
         const memberId = event.pathParameters?.id;
+        const workspaceId = event.pathParameters?.workspaceId;
 
-        if (!memberId) {
-            return errorResponse('Member ID is required', 400);
+        if (!memberId || !workspaceId) {
+            return errorResponse('Member ID and workspace ID are required', 400);
         }
 
         // Get the member to remove
         const { data: memberToRemove, error: memberError } = await supabase
-            .from('members')
+            .from('workspace_members')
             .select('*')
             .eq('id', memberId)
+            .eq('workspace_id', workspaceId)
             .single();
 
         if (memberError || !memberToRemove) {
@@ -30,7 +32,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         }
 
         // Get current member
-        const currentMember = await getMember(memberToRemove.workspace_id, userId);
+        const currentMember = await getMember(workspaceId, userId);
 
         if (!currentMember) {
             return errorResponse('Not a member of this workspace', 403);
@@ -72,7 +74,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             ]);
 
             // Delete the member
-            const { error: finalDeleteError } = await supabase.from('members').delete().eq('id', memberId);
+            const { error: finalDeleteError } = await supabase.from('workspace_members').delete().eq('id', memberId);
 
             if (finalDeleteError) {
                 throw finalDeleteError;

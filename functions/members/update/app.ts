@@ -13,10 +13,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         }
 
         const memberId = event.pathParameters?.id;
+        const workspaceId = event.pathParameters?.workspaceId;
         const { role } = JSON.parse(event.body || '{}');
 
-        if (!memberId) {
-            return errorResponse('Member ID is required', 400);
+        if (!memberId || !workspaceId) {
+            return errorResponse('Member ID and workspace ID are required', 400);
         }
 
         if (!role || !['admin', 'member'].includes(role)) {
@@ -25,9 +26,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         // Get the member to update
         const { data: memberToUpdate, error: memberError } = await supabase
-            .from('members')
+            .from('workspace_members')
             .select('*')
             .eq('id', memberId)
+            .eq('workspace_id', workspaceId)
             .single();
 
         if (memberError || !memberToUpdate) {
@@ -35,7 +37,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         }
 
         // Check if current user is an admin of the workspace
-        const currentMember = await getMember(memberToUpdate.workspace_id, userId);
+        const currentMember = await getMember(workspaceId, userId);
 
         if (!currentMember || currentMember.role !== 'admin') {
             return errorResponse('Admin access required', 403);
@@ -43,12 +45,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         // Update member role
         const { error } = await supabase
-            .from('members')
+            .from('workspace_members')
             .update({
                 role,
                 updated_at: new Date().toISOString(),
             })
-            .eq('id', memberId);
+            .eq('id', memberId)
+            .eq('workspace_id', workspaceId);
 
         if (error) {
             throw error;
