@@ -290,20 +290,26 @@ Resources:
         EntryPoints:
           - app.ts
 
-  # CREATE MESSAGE
-  CreateMessageFunction:
+  # SEND MESSAGE (UNIVERSAL)
+  SendMessageFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: functions/messages/create
+      CodeUri: functions/messages/send
       Handler: app.handler
       Runtime: nodejs20.x
       Architectures:
         - arm64
       Events:
-        CreateMessage:
+        SendChannelMessage:
           Type: Api
           Properties:
-            Path: /messages
+            Path: /workspaces/{workspaceId}/channels/{channelId}/messages
+            Method: post
+            RestApiId: !Ref MainApi
+        SendConversationMessage:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/conversations/{conversationId}/messages
             Method: post
             RestApiId: !Ref MainApi
     Metadata:
@@ -434,6 +440,30 @@ Resources:
         EntryPoints:
           - app.ts
 
+  # GET CHANNEL MESSAGES
+  GetChannelMessagesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels/get-messages
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetChannelMessages:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels/{id}/messages
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
   # CREATE CHANNEL
   CreateChannelFunction:
     Type: AWS::Serverless::Function
@@ -543,7 +573,7 @@ Resources:
         CreateOrGetConversation:
           Type: Api
           Properties:
-            Path: /conversations
+            Path: /workspaces/{workspaceId}/conversations
             Method: post
             RestApiId: !Ref MainApi
     Metadata:
@@ -567,7 +597,7 @@ Resources:
         GetConversations:
           Type: Api
           Properties:
-            Path: /conversations
+            Path: /workspaces/{workspaceId}/conversations
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -591,7 +621,31 @@ Resources:
         GetConversationById:
           Type: Api
           Properties:
-            Path: /conversations/{id}
+            Path: /workspaces/{workspaceId}/conversations/{id}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET CONVERSATION MESSAGES
+  GetConversationMessagesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/conversations/get-messages
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetConversationMessages:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/conversations/{id}/messages
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -615,7 +669,7 @@ Resources:
         DeleteConversation:
           Type: Api
           Properties:
-            Path: /conversations/{id}
+            Path: /workspaces/{workspaceId}/conversations/{id}
             Method: delete
             RestApiId: !Ref MainApi
     Metadata:
