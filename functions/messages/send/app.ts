@@ -1,8 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getUserIdFromToken } from './helpers/auth';
-import { getWorkspaceMember } from './helpers/get-member';
+import { getChannelMembers, getConversationMembers, getWorkspaceMember } from './helpers/get-members';
 import { supabase } from './utils/supabase-client';
 import { errorResponse, successResponse } from './utils/response';
+import { broadcastTypingStatus, broadcastMessage } from './helpers/broadcasting';
 
 interface SendMessageRequest {
     body: string;
@@ -124,6 +125,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             }
         }
 
+        // Stop typing notification before sending message
+        await broadcastTypingStatus(userId, channelId, conversationId, false);
+
         // Insert the message
         const { data: message, error: insertError } = await supabase
             .from('messages')
@@ -153,9 +157,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
                 message_type,
                 created_at,
                 updated_at,
-                workspace_members!inner (
+                workspace_members!messages_workspace_member_id_fkey (
                     id,
-                    users!inner (
+                    users!workspace_members_user_id_fkey1 (
                         id,
                         name,
                         email,
@@ -209,6 +213,18 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             }),
             reactions: [],
         };
+
+        // Send message to all connected clients
+        await broadcastMessage(transformedMessage, channelId, conversationId);
+
+        // Optional: Send push notifications to offline users
+        // You could add this later for mobile apps
+        const memberIds = channelId
+            ? await getChannelMembers(channelId)
+            : await getConversationMembers(conversationId!);
+
+        // Log for debugging
+        console.log(`Message sent to ${memberIds.length} members in ${channelId ? 'channel' : 'conversation'}`);
 
         return successResponse(transformedMessage);
     } catch (error) {
