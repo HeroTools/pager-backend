@@ -75,7 +75,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
                 deleted_at,
                 workspace_members!inner (
                     id,
-                    users!inner (
+                    users!workspace_members_user_id_fkey1 (
                         id,
                         name,
                         email,
