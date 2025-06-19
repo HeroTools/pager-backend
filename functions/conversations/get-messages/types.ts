@@ -1,4 +1,4 @@
-interface MessageWithUser {
+export interface MessageWithUser {
     id: string;
     body: string;
     attachment_id: string | null;
@@ -36,7 +36,7 @@ interface MessageWithUser {
     }>;
 }
 
-interface ConversationMemberWithUser {
+export interface ConversationMemberWithUser {
     id: string;
     conversation_id: string;
     workspace_member_id: string;
@@ -57,7 +57,7 @@ interface ConversationMemberWithUser {
     };
 }
 
-interface ConversationData {
+export interface ConversationData {
     conversation: {
         id: string;
         workspace_id: string;
