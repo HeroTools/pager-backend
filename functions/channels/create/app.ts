@@ -1,11 +1,12 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getUserIdFromToken } from './helpers/auth';
-import { getMember } from './helpers/get-member';
-import { supabase } from './utils/supabase-client';
+import { getWorkspaceMember } from './helpers/get-member';
 import { successResponse, errorResponse } from './utils/response';
 import { parseChannelName } from './helpers/parse-channel-name';
+import dbPool from './utils/create-db-pool';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    let client;
     try {
         const userId = await getUserIdFromToken(event.headers.Authorization);
 
@@ -13,7 +14,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Unauthorized', 401);
         }
 
-        const { name } = JSON.parse(event.body || '{}');
+        const { name, channelType = 'public', description } = JSON.parse(event.body || '{}');
 
         const workspaceId = event.pathParameters?.workspaceId;
 
@@ -21,7 +22,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Name and workspaceId are required', 400);
         }
 
-        const member = await getMember(workspaceId, userId);
+        client = await dbPool.connect();
+
+        const member = await getWorkspaceMember(client, workspaceId, userId);
 
         if (!member) {
             return errorResponse('User is not a member of this workspace', 403);
@@ -29,23 +32,58 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         const parsedName = parseChannelName(name);
 
-        // Create channel
-        const { data: channel, error } = await supabase
-            .from('channels')
-            .insert({
-                name: parsedName,
-                workspace_id: workspaceId,
-            })
-            .select()
-            .single();
+        const result = await client.query(
+            `
+            WITH new_channel AS (
+                INSERT INTO channels (name, workspace_id, channel_type, description)
+                SELECT $1, $2, $3, $4
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM channels 
+                    WHERE workspace_id = $2 AND name = $1
+                )
+                RETURNING id, name, channel_type, created_at
+            ),
+            new_member AS (
+                INSERT INTO channel_members (channel_id, workspace_member_id, role)
+                SELECT id, $5, 'admin' 
+                FROM new_channel
+                RETURNING channel_id
+            )
+            SELECT 
+                nc.id as channel_id,
+                nc.name,
+                nc.channel_type,
+                nc.created_at,
+                CASE WHEN nc.id IS NOT NULL THEN true ELSE false END as created,
+                nm.channel_id IS NOT NULL as member_added
+            FROM new_channel nc
+            LEFT JOIN new_member nm ON nc.id = nm.channel_id
+        `,
+            [parsedName, workspaceId, channelType, description || null, member.id],
+        );
 
-        if (error) {
-            throw error;
+        // Check if channel was created
+        if (result.rows.length === 0 || !result.rows[0].created) {
+            return errorResponse(`Channel with name "${parsedName}" already exists in this workspace`, 409);
         }
 
-        return successResponse({ channelId: channel.id });
+        const channelData = result.rows[0];
+
+        return successResponse({
+            channelId: channelData.channel_id,
+            name: channelData.name,
+            channelType: channelData.channel_type,
+            createdAt: channelData.created_at,
+        });
     } catch (error) {
         console.error('Error creating channel:', error);
+
+        // Handle specific PostgreSQL errors
+        if (error.code === '23505') {
+            // Unique constraint violation
+            return errorResponse('Channel name already exists', 409);
+        }
+
         return errorResponse('Internal server error', 500);
     }
 };

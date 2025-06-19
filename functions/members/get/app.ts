@@ -6,38 +6,37 @@ import { supabase } from './utils/supabase-client';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
-        const userId = await getUserIdFromToken(event.headers.Authorization);
+        const authHeader = event.headers.Authorization || event.headers.authorization;
+        const userId = authHeader ? await getUserIdFromToken(authHeader) : null;
 
         if (!userId) {
             return successResponse([]);
         }
 
         const workspaceId = event.pathParameters?.workspaceId;
-
         if (!workspaceId) {
             return errorResponse('Workspace ID is required', 400);
         }
 
-        // Check if user is a member of the workspace
+        // Make sure they're in the workspace
         const currentMember = await getMember(workspaceId, userId);
-
         if (!currentMember) {
             return successResponse([]);
         }
 
-        // Get all members of the workspace with user data
+        // Join and alias `users` as `user`
         const { data: members, error } = await supabase
             .from('workspace_members')
             .select(
                 `
-                *,
-                users!workspace_members_user_id_fkey1(
-                    id,
-                    name,
-                    image,
-                    email
-                )
-                `,
+        *,
+        user:users!workspace_members_user_id_fkey1(
+          id,
+          name,
+          email,
+          image
+        )
+      `,
             )
             .eq('workspace_id', workspaceId)
             .order('created_at', { ascending: true });
@@ -46,15 +45,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             throw error;
         }
 
-        // Transform the data to include user data at the top level
-        const transformedMembers = (members || []).map((member) => ({
-            ...member,
-            user: member.users,
-        }));
-
-        return successResponse(transformedMembers);
-    } catch (error) {
-        console.error('Error getting members:', error);
+        // members now each have a `user` object and no `users` key
+        return successResponse(members || []);
+    } catch (err) {
+        console.error('Error getting members:', err);
         return errorResponse('Internal server error', 500);
     }
 };
