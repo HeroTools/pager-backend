@@ -194,6 +194,30 @@ Resources:
         EntryPoints:
           - app.ts
 
+  # GET WORKSPACE FROM INVITE TOKEN
+  GetWorkspaceFromInviteTokenFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/workspaces/get-from-invite-token
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetWorkspaceFromInviteToken:
+          Type: Api
+          Properties:
+            Path: /workspaces/invite-token
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
   # UPDATE WORKSPACE
   UpdateWorkspaceFunction:
     Type: AWS::Serverless::Function

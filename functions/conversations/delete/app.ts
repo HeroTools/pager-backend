@@ -56,7 +56,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             throw error;
         }
 
-        return successResponse({ conversationId });
+        return successResponse({ conversation_id: conversationId });
     } catch (error) {
         console.error('Error deleting conversation:', error);
         return errorResponse('Internal server error', 500);
