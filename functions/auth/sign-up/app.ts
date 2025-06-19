@@ -1,6 +1,6 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { errorResponse, successResponse } from './utils/response';
 import { supabase } from './utils/supabase-client';
+import { errorResponse, successResponse } from './utils/response';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
@@ -9,55 +9,46 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         if (!email || !password) {
             return errorResponse('Email and password are required', 400);
         }
-
         if (!name) {
             return errorResponse('Name is required', 400);
         }
 
-        // Sign up user with Supabase Auth
-        const { data, error } = await supabase.auth.signUp({
+        const { data, error: signUpError } = await supabase.auth.signUp({
             email,
             password,
-            options: {
-                data: {
-                    name,
-                },
-            },
+            options: { data: { name } },
         });
-
-        if (error) {
-            return errorResponse(error.message, 400);
+        if (signUpError || !data.user) {
+            return errorResponse(signUpError?.message || 'Failed to create user', 400);
         }
 
-        if (!data.user) {
-            return errorResponse('Failed to create user', 400);
-        }
+        const userId = data.user.id;
 
-        // Create user profile in users table
-        const { error: profileError } = await supabase.from('users').insert({
-            id: data.user.id,
-            email: data.user.email,
-            name,
-            image: null,
-        });
+        const { error: profileError } = await supabase.from('users').insert({ id: userId, email, name, image: null });
 
         if (profileError) {
-            console.error('Error creating user profile:', profileError);
+            console.error('Profile insert error:', profileError);
+
+            const { error: deleteError } = await supabase.auth.admin.deleteUser(userId);
+            if (deleteError) {
+                console.error('Failed to roll back auth user:', deleteError);
+            }
+
+            return errorResponse('Failed to create user profile', 500);
         }
 
-        // Determine what happens next based on email confirmation
-        const isEmailConfirmed = !!data.user.email_confirmed_at;
-
-        return successResponse({
+        const isEmailConfirmed = Boolean(data.user.email_confirmed_at);
+        const payload = {
             user: data.user,
             session: data.session,
             requires_email_confirmation: !isEmailConfirmed,
             message: isEmailConfirmed
                 ? 'User created and signed in successfully'
                 : 'Please check your email to confirm your account',
-        });
-    } catch (error) {
-        console.error('Error signing up:', error);
+        };
+        return successResponse(payload, isEmailConfirmed ? 200 : 201);
+    } catch (err) {
+        console.error('Sign-up handler error:', err);
         return errorResponse('Internal server error', 500);
     }
 };
