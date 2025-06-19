@@ -1,14 +1,19 @@
-import { supabase } from '../utils/supabase-client';
+import { PoolClient } from 'pg';
 
-const getMember = async (workspaceId: string, userId: string) => {
-    const { data: member } = await supabase
-        .from('members')
-        .select('*')
-        .eq('workspace_id', workspaceId)
-        .eq('user_id', userId)
-        .single();
+const getWorkspaceMember = async (client: PoolClient, workspaceId: string, userId: string) => {
+    const result = await client.query(
+        `
+    SELECT *
+    FROM workspace_members
+    WHERE workspace_id = $1
+      AND user_id      = $2
+      AND is_deactivated = false
+    LIMIT 1
+    `,
+        [workspaceId, userId],
+    );
 
-    return member;
+    return result.rows[0] || null;
 };
 
-export { getMember };
+export { getWorkspaceMember };
