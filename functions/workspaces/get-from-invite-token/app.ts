@@ -4,7 +4,6 @@ import dbPool from './utils/create-db-pool';
 import { errorResponse, successResponse, setCorsHeaders } from './utils/response';
 
 interface WorkspaceInfo {
-    id: string;
     name: string;
     image?: string;
     is_active: boolean;
@@ -33,7 +32,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         const query = `
       SELECT 
-        w.id,
         w.name,
         w.image,
         w.is_active
@@ -53,7 +51,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         const workspace = result.rows[0];
         const workspaceInfo: WorkspaceInfo = {
-            id: workspace.id,
             name: workspace.name,
             image: workspace.image,
             is_active: workspace.is_active,
