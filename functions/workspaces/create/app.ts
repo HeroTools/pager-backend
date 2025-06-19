@@ -40,22 +40,22 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         const result = await client.query(
             `
             WITH new_workspace AS (
-                INSERT INTO public.workspaces (name, user_id) 
+                INSERT INTO workspaces (name, user_id) 
                 VALUES ($1, $2) 
                 RETURNING id
             ),
             new_member AS (
-                INSERT INTO public.workspace_members (user_id, workspace_id, role)
+                INSERT INTO workspace_members (user_id, workspace_id, role)
                 SELECT $2, id, 'admin' FROM new_workspace
                 RETURNING id, workspace_id
             ),
             new_channel AS (
-                INSERT INTO public.channels (name, workspace_id, channel_type, description)
+                INSERT INTO channels (name, workspace_id, channel_type, description)
                 SELECT 'general', workspace_id, 'public', 'General discussion channel' FROM new_member
                 RETURNING id, workspace_id
             ),
             channel_membership AS (
-                INSERT INTO public.channel_members (workspace_member_id, channel_id, role, notifications_enabled)
+                INSERT INTO channel_members (workspace_member_id, channel_id, role, notifications_enabled)
                 SELECT nm.id, nc.id, 'admin', true 
                 FROM new_member nm, new_channel nc
                 RETURNING channel_id
