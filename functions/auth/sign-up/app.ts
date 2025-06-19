@@ -51,7 +51,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         return successResponse({
             user: data.user,
             session: data.session,
-            requiresEmailConfirmation: !isEmailConfirmed,
+            requires_email_confirmation: !isEmailConfirmed,
             message: isEmailConfirmed
                 ? 'User created and signed in successfully'
                 : 'Please check your email to confirm your account',
