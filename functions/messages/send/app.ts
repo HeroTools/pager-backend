@@ -219,12 +219,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         // Optional: Send push notifications to offline users
         // You could add this later for mobile apps
-        const memberIds = channelId
-            ? await getChannelMembers(channelId)
-            : await getConversationMembers(conversationId!);
+        // const memberIds = channelId
+        //     ? await getChannelMembers(channelId)
+        //     : await getConversationMembers(conversationId!);
 
-        // Log for debugging
-        console.log(`Message sent to ${memberIds.length} members in ${channelId ? 'channel' : 'conversation'}`);
+        // // Log for debugging
+        // console.log(`Message sent to ${memberIds.length} members in ${channelId ? 'channel' : 'conversation'}`);
 
         return successResponse(transformedMessage);
     } catch (error) {
