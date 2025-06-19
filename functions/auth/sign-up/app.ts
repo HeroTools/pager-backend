@@ -1,6 +1,6 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { errorResponse, successResponse } from './utils/response';
 import { supabase } from './utils/supabase-client';
-import { successResponse, errorResponse } from './utils/response';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
@@ -43,14 +43,17 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         if (profileError) {
             console.error('Error creating user profile:', profileError);
-            // Don't return error here as auth user was created successfully
         }
+
+        // Determine what happens next based on email confirmation
+        const isEmailConfirmed = !!data.user.email_confirmed_at;
 
         return successResponse({
             user: data.user,
             session: data.session,
-            message: data.user.email_confirmed_at
-                ? 'User created successfully'
+            requiresEmailConfirmation: !isEmailConfirmed,
+            message: isEmailConfirmed
+                ? 'User created and signed in successfully'
                 : 'Please check your email to confirm your account',
         });
     } catch (error) {
