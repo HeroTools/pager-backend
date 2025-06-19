@@ -1,14 +1,12 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { APIGatewayProxyEvent, APIGatewayProxyResult, UserStatus } from 'aws-lambda';
 import { getUserIdFromToken } from './helpers/auth';
-import { getWorkspaceMember } from './helpers/get-member';
 import { supabase } from './utils/supabase-client';
 import { successResponse, errorResponse } from './utils/response';
-import { MessageWithUser, ChannelMemberWithUser, ChannelData } from './types';
+import { EnrichedMessage } from './types';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
         const userId = await getUserIdFromToken(event.headers.Authorization);
-
         if (!userId) {
             return errorResponse('Unauthorized', 401);
         }
@@ -20,38 +18,79 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Channel ID and workspace ID are required', 400);
         }
 
-        // Parse query parameters for pagination
+        // Parse query parameters
         const limit = Math.min(parseInt(event.queryStringParameters?.limit || '50'), 100);
-        const cursor = event.queryStringParameters?.cursor; // Message ID to start from
-        const includeBefore = event.queryStringParameters?.before; // Include messages before this timestamp
+        const cursor = event.queryStringParameters?.cursor;
+        const includeBefore = event.queryStringParameters?.before;
+        const includeMembers = event.queryStringParameters?.include_members === 'true';
+        const includeReactions = event.queryStringParameters?.include_reactions !== 'false'; // Default true
 
-        const workspaceMember = await getWorkspaceMember(workspaceId, userId);
+        // STEP 1: Get workspace member ID and verify access (SINGLE QUERY)
+        // This hits idx_workspace_members_workspace_user index
+        const { data: workspaceMember, error: workspaceMemberError } = await supabase
+            .from('workspace_members')
+            .select('id')
+            .eq('workspace_id', workspaceId)
+            .eq('user_id', userId)
+            .eq('is_deactivated', false)
+            .single();
 
-        if (!workspaceMember) {
+        if (workspaceMemberError || !workspaceMember) {
             return errorResponse('Not a member of this workspace', 403);
         }
 
-        // Check channel access
-        const { data: channelMember, error: channelMemberError } = await supabase
+        // STEP 2: Verify channel access and get channel info (SINGLE QUERY)
+        // This hits idx_channel_members_channel_workspace index
+        const { data: channelAccess, error: channelAccessError } = await supabase
             .from('channel_members')
-            .select('id')
+            .select(
+                `
+                id,
+                role,
+                notifications_enabled,
+                last_read_message_id,
+                channels!inner(
+                    id,
+                    name,
+                    description,
+                    channel_type
+                )
+            `,
+            )
             .eq('channel_id', channelId)
             .eq('workspace_member_id', workspaceMember.id)
             .single();
 
-        if (channelMemberError || !channelMember) {
-            const { data: channel, error: channelError } = await supabase
+        let channelInfo: any;
+        let userChannelData: any;
+        if (channelAccessError || !channelAccess) {
+            // Fallback: Check if it's a public channel
+            const { data: publicChannel, error: publicChannelError } = await supabase
                 .from('channels')
-                .select('id, channel_type')
+                .select('id, name, description, channel_type')
                 .eq('id', channelId)
+                .eq('workspace_id', workspaceId)
+                .eq('channel_type', 'public')
                 .single();
 
-            if (channelError || !channel || channel.channel_type !== 'public') {
-                return errorResponse('Not a member of this channel', 403);
+            if (publicChannelError || !publicChannel) {
+                return errorResponse('Channel not found or access denied', 403);
             }
+
+            // For public channels, we'll use default values
+            channelInfo = publicChannel;
+            userChannelData = null;
+        } else {
+            channelInfo = channelAccess.channels;
+            userChannelData = {
+                role: channelAccess.role,
+                notifications_enabled: channelAccess.notifications_enabled,
+                last_read_message_id: channelAccess.last_read_message_id,
+            };
         }
 
-        // Fetch messages with user data and attachments
+        // STEP 3: Fetch messages (OPTIMIZED SINGLE QUERY)
+        // This hits idx_messages_channel_created_at index perfectly
         let messagesQuery = supabase
             .from('messages')
             .select(
@@ -70,29 +109,17 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
                 updated_at,
                 edited_at,
                 deleted_at,
-                workspace_members!inner (
-                    id,
-                    users!workspace_members_user_id_fkey1 (
-                        id,
-                        name,
-                        email,
-                        image
-                    )
-                ),
-                attachments (
-                    id,
-                    url,
-                    content_type,
-                    size_bytes
-                )
+                blocks,
+                metadata
             `,
             )
             .eq('channel_id', channelId)
-            .is('deleted_at', null) // Only non-deleted messages
+            .is('deleted_at', null)
             .order('created_at', { ascending: false });
 
         // Apply cursor-based pagination
         if (cursor) {
+            // Get cursor message timestamp (this could be cached in production)
             const { data: cursorMessage } = await supabase
                 .from('messages')
                 .select('created_at')
@@ -104,7 +131,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             }
         }
 
-        // Apply before timestamp filter
         if (includeBefore) {
             messagesQuery = messagesQuery.lt('created_at', includeBefore);
         }
@@ -116,181 +142,226 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Failed to fetch messages', 500);
         }
 
-        // Check if there are more messages (pagination)
+        // Pagination logic
         const hasMore = messagesData.length > limit;
         const messages = hasMore ? messagesData.slice(0, limit) : messagesData;
         const nextCursor = hasMore && messages.length > 0 ? messages[messages.length - 1].id : null;
 
-        // Get total message count for the channel
-        const { count: totalCount } = await supabase
-            .from('messages')
-            .select('id', { count: 'exact' })
-            .eq('channel_id', channelId)
-            .is('deleted_at', null);
-
-        // Fetch reactions for these messages
+        // STEP 4: Batch fetch user data and reactions in parallel (OPTIMIZED)
+        // Get unique workspace member IDs from messages
+        const uniqueWorkspaceMemberIds = [...new Set(messages.map((m) => m.workspace_member_id))];
         const messageIds = messages.map((m) => m.id);
-        const { data: reactionsData } = await supabase
-            .from('reactions')
+
+        // Prepare parallel queries
+        const workspaceMembersQuery = supabase
+            .from('workspace_members')
             .select(
                 `
                 id,
-                message_id,
-                value,
-                workspace_members!inner (
-                    users!inner (
-                        id,
-                        name
-                    )
-                )
-            `,
-            )
-            .in('message_id', messageIds);
-
-        // Group reactions by message and emoji
-        const messageReactions: Record<
-            string,
-            Record<string, { count: number; users: Array<{ id: string; name: string }> }>
-        > = {};
-
-        reactionsData?.forEach((reaction) => {
-            const messageId = reaction.message_id;
-            const emoji = reaction.value;
-
-            if (!messageReactions[messageId]) {
-                messageReactions[messageId] = {};
-            }
-
-            if (!messageReactions[messageId][emoji]) {
-                messageReactions[messageId][emoji] = { count: 0, users: [] };
-            }
-
-            messageReactions[messageId][emoji].count++;
-            messageReactions[messageId][emoji].users.push({
-                id: reaction.workspace_members.users.id,
-                name: reaction.workspace_members.users.name,
-            });
-        });
-
-        // Transform messages data
-        const transformedMessages: MessageWithUser[] = messages.map((message) => ({
-            id: message.id,
-            body: message.body,
-            attachment_id: message.attachment_id,
-            workspace_member_id: message.workspace_member_id,
-            workspace_id: message.workspace_id,
-            channel_id: message.channel_id,
-            conversation_id: message.conversation_id,
-            parent_message_id: message.parent_message_id,
-            thread_id: message.thread_id,
-            message_type: message.message_type,
-            created_at: message.created_at,
-            updated_at: message.updated_at,
-            edited_at: message.edited_at,
-            deleted_at: message.deleted_at,
-            user: {
-                id: message.workspace_members.users.id,
-                name: message.workspace_members.users.name,
-                email: message.workspace_members.users.email,
-                image: message.workspace_members.users.image,
-            },
-            ...(message.attachments && {
-                attachment: {
-                    id: message.attachments.id,
-                    url: message.attachments.url,
-                    content_type: message.attachments.content_type,
-                    size_bytes: message.attachments.size_bytes,
-                },
-            }),
-            ...(messageReactions[message.id] && {
-                reactions: Object.entries(messageReactions[message.id]).map(([emoji, data]) => ({
-                    id: `${message.id}_${emoji}`,
-                    value: emoji,
-                    count: data.count,
-                    users: data.users,
-                })),
-            }),
-        }));
-
-        // Fetch channel members with user data and status
-        const { data: membersData, error: membersError } = await supabase
-            .from('channel_members')
-            .select(
-                `
-                id,
-                channel_id,
-                workspace_member_id,
-                joined_at,
-                role,
-                notifications_enabled,
-                last_read_message_id,
-                workspace_members!inner (
+                user_id,
+                users!workspace_members_user_id_fkey1(
                     id,
-                    users!inner (
-                        id,
-                        name,
-                        email,
-                        image
-                    )
+                    name,
+                    image
                 )
             `,
             )
-            .eq('channel_id', channelId);
+            .in('id', uniqueWorkspaceMemberIds)
+            .eq('is_deactivated', false);
 
-        if (membersError) {
-            console.error('Error fetching members:', membersError);
-            return errorResponse('Failed to fetch members', 500);
+        const reactionsQuery =
+            includeReactions && messages.length > 0
+                ? supabase
+                      .from('reactions')
+                      .select(
+                          `
+                    id,
+                    message_id,
+                    value,
+                    workspace_members!inner(
+                        users!workspace_members_user_id_fkey1(id, name)
+                    )
+                `,
+                      )
+                      .in('message_id', messageIds)
+                : Promise.resolve({ data: null, error: null });
+
+        // Execute queries in parallel
+        const [
+            { data: workspaceMembers, error: workspaceMembersError },
+            { data: reactionsData, error: reactionsError },
+        ] = await Promise.all([workspaceMembersQuery, reactionsQuery]);
+
+        if (workspaceMembersError) {
+            console.error('Error fetching workspace members:', workspaceMembersError);
+            return errorResponse('Failed to fetch user data', 500);
         }
 
-        // Get user IDs for status lookup
-        const memberUserIds = membersData.map((member) => member.workspace_members.users.id);
+        if (reactionsError) {
+            console.error('Error fetching reactions:', reactionsError);
+            return errorResponse('Failed to fetch reactions', 500);
+        }
 
-        // Fetch user status for all members
-        const { data: statusData } = await supabase
-            .from('user_status')
-            .select('user_id, status, custom_status, status_emoji, last_seen_at')
-            .eq('workspace_id', workspaceId)
-            .in('user_id', memberUserIds);
+        // Create lookup maps for O(1) access
+        const workspaceMemberMap: Record<string, any> = {};
+        const userIds: string[] = [];
 
-        // Create status lookup map
-        const userStatus: Record<string, any> = {};
-        statusData?.forEach((status) => {
-            userStatus[status.user_id] = {
-                status: status.status,
-                custom_status: status.custom_status,
-                status_emoji: status.status_emoji,
-                last_seen_at: status.last_seen_at,
+        workspaceMembers?.forEach((wm) => {
+            workspaceMemberMap[wm.id] = {
+                id: wm.users.id,
+                name: wm.users.name,
+                image: wm.users.image,
             };
+            userIds.push(wm.users.id);
         });
 
-        // Transform members data
-        const transformedMembers: ChannelMemberWithUser[] = membersData.map((member) => ({
-            id: member.id,
-            channel_id: member.channel_id,
-            workspace_member_id: member.workspace_member_id,
-            joined_at: member.joined_at,
-            role: member.role,
-            notifications_enabled: member.notifications_enabled,
-            last_read_message_id: member.last_read_message_id,
-            user: {
-                id: member.workspace_members.users.id,
-                name: member.workspace_members.users.name,
-                email: member.workspace_members.users.email,
-                image: member.workspace_members.users.image,
-            },
-            ...(userStatus[member.workspace_members.users.id] && {
-                status: userStatus[member.workspace_members.users.id],
-            }),
-        }));
+        // Process reactions data
+        const reactionsMap: Record<string, any[]> = {};
 
-        const responseData: ChannelData = {
-            messages: transformedMessages,
-            members: transformedMembers,
+        if (reactionsData) {
+            reactionsData.forEach((reaction) => {
+                const messageId = reaction.message_id;
+                const emoji = reaction.value;
+
+                if (!reactionsMap[messageId]) {
+                    reactionsMap[messageId] = {};
+                }
+
+                if (!reactionsMap[messageId][emoji]) {
+                    reactionsMap[messageId][emoji] = {
+                        id: `${messageId}_${emoji}`,
+                        value: emoji,
+                        count: 0,
+                        users: [],
+                    };
+                }
+
+                reactionsMap[messageId][emoji].count++;
+                reactionsMap[messageId][emoji].users.push({
+                    id: reaction.workspace_members.users.id,
+                    name: reaction.workspace_members.users.name,
+                });
+            });
+        }
+
+        // STEP 5: Fetch user status and attachments in parallel (OPTIMIZED)
+        const messagesWithAttachments = messages.filter((m) => m.attachment_id);
+
+        const userStatusQuery =
+            userIds.length > 0
+                ? supabase
+                      .from('user_status')
+                      .select('user_id, status, custom_status, status_emoji, last_seen_at')
+                      .eq('workspace_id', workspaceId)
+                      .in('user_id', userIds)
+                : Promise.resolve({ data: null, error: null });
+
+        const attachmentsQuery =
+            messagesWithAttachments.length > 0
+                ? supabase
+                      .from('attachments')
+                      .select('id, url, content_type, size_bytes')
+                      .in(
+                          'id',
+                          messagesWithAttachments.map((m) => m.attachment_id),
+                      )
+                : Promise.resolve({ data: null, error: null });
+
+        // Execute remaining queries in parallel
+        const [{ data: userStatusData }, { data: attachments }] = await Promise.all([
+            userStatusQuery,
+            attachmentsQuery,
+        ]);
+
+        // Process user status data
+        const userStatusMap: Record<string, UserStatus> = {};
+        userStatusData?.forEach((status) => {
+            userStatusMap[status.user_id] = status;
+        });
+
+        // Process attachments data
+        const attachmentMap: Record<string, any> = {};
+        attachments?.forEach((att) => {
+            attachmentMap[att.id] = att;
+        });
+
+        // STEP 6: Assemble enriched messages (IN-MEMORY OPERATION)
+        const enrichedMessages: EnrichedMessage[] = messages.map((message) => {
+            const user = workspaceMemberMap[message.workspace_member_id] || {
+                id: 'unknown',
+                name: 'Unknown User',
+                image: null,
+            };
+
+            const enrichedMessage: EnrichedMessage = {
+                ...message,
+                user,
+                ...(message.attachment_id &&
+                    attachmentMap[message.attachment_id] && {
+                        attachment: attachmentMap[message.attachment_id],
+                    }),
+                ...(reactionsMap[message.id] && {
+                    reactions: Object.values(reactionsMap[message.id]),
+                }),
+            };
+
+            return enrichedMessage;
+        });
+
+        // STEP 7: Fetch channel members if requested (OPTIONAL SINGLE QUERY)
+        let channelMembers: any[] = [];
+
+        if (includeMembers) {
+            const { data: membersData } = await supabase
+                .from('channel_members')
+                .select(
+                    `
+                    id,
+                    workspace_member_id,
+                    role,
+                    joined_at,
+                    notifications_enabled,
+                    last_read_message_id
+                `,
+                )
+                .eq('channel_id', channelId);
+
+            // Enrich members with user data from our existing workspace member map
+            channelMembers =
+                membersData?.map((member) => ({
+                    ...member,
+                    user: workspaceMemberMap[member.workspace_member_id] || {
+                        id: 'unknown',
+                        name: 'Unknown User',
+                        image: null,
+                    },
+                })) || [];
+        }
+
+        // STEP 8: Get message count (OPTIONAL - can be cached)
+        let totalCount = 0;
+        const includeCount = event.queryStringParameters?.include_count === 'true';
+
+        if (includeCount) {
+            const { count } = await supabase
+                .from('messages')
+                .select('id', { count: 'exact' })
+                .eq('channel_id', channelId)
+                .is('deleted_at', null);
+            totalCount = count || 0;
+        }
+
+        // FINAL RESPONSE
+        const responseData = {
+            channel: channelInfo,
+            messages: enrichedMessages,
+            members: channelMembers,
             pagination: {
                 hasMore,
                 nextCursor,
-                totalCount: totalCount || 0,
+                totalCount,
             },
+            user_channel_data: userChannelData,
         };
 
         return successResponse(responseData);
