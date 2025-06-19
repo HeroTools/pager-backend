@@ -1,64 +1,109 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getUserIdFromToken } from './helpers/auth';
-import { generateCode } from './helpers/generate-code';
 import { errorResponse, successResponse } from './utils/response';
-import { supabase } from './utils/supabase-client';
+import dbPool from './utils/create-db-pool';
+import { PoolClient } from 'pg';
+
+interface CreateWorkspaceBody {
+    name: string;
+}
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    try {
-        const userId = await getUserIdFromToken(event.headers.Authorization);
+    let client: PoolClient | null = null;
 
+    try {
+        if (!event.body) {
+            return errorResponse('Request body is required', 400);
+        }
+
+        const userId = await getUserIdFromToken(event.headers.Authorization);
         if (!userId) {
             return errorResponse('Unauthorized', 401);
         }
 
-        const { name } = JSON.parse(event.body || '{}');
-
-        if (!name) {
-            return errorResponse('Name is required', 400);
+        let body: CreateWorkspaceBody;
+        try {
+            body = JSON.parse(event.body);
+        } catch {
+            return errorResponse('Invalid JSON in request body', 400);
         }
 
-        const joinCode = generateCode();
-
-        // Insert workspace
-        const { data: workspace, error: workspaceError } = await supabase
-            .from('workspaces')
-            .insert({
-                name,
-                user_id: userId,
-                join_code: joinCode,
-            })
-            .select()
-            .single();
-
-        if (workspaceError) {
-            return errorResponse(workspaceError.message, 500);
+        const { name } = body;
+        if (!name?.trim() || name.trim().length < 3) {
+            return errorResponse('Name is required and must be at least 3 characters long', 400);
         }
 
-        // Insert member (admin)
-        const { error: memberError } = await supabase.from('members').insert({
-            user_id: userId,
-            workspace_id: workspace.id,
-            role: 'admin',
+        const trimmedName = name.trim();
+
+        client = await dbPool.connect();
+
+        const result = await client.query(
+            `
+            WITH new_workspace AS (
+                INSERT INTO public.workspaces (name, user_id) 
+                VALUES ($1, $2) 
+                RETURNING id
+            ),
+            new_member AS (
+                INSERT INTO public.workspace_members (user_id, workspace_id, role)
+                SELECT $2, id, 'admin' FROM new_workspace
+                RETURNING id, workspace_id
+            ),
+            new_channel AS (
+                INSERT INTO public.channels (name, workspace_id, channel_type, description)
+                SELECT 'general', workspace_id, 'public', 'General discussion channel' FROM new_member
+                RETURNING id, workspace_id
+            ),
+            channel_membership AS (
+                INSERT INTO public.channel_members (workspace_member_id, channel_id, role, notifications_enabled)
+                SELECT nm.id, nc.id, 'admin', true 
+                FROM new_member nm, new_channel nc
+                RETURNING channel_id
+            )
+            SELECT 
+                nw.id as workspace_id,
+                nm.id as member_id,
+                nc.id as channel_id
+            FROM new_workspace nw, new_member nm, new_channel nc
+            `,
+            [trimmedName, userId],
+        );
+
+        const workspaceData = result.rows[0];
+
+        return successResponse({
+            workspace_id: workspaceData.workspace_id,
+            channel_id: workspaceData.channel_id,
+            member_id: workspaceData.member_id,
+            message: 'Workspace created successfully',
         });
-
-        if (memberError) {
-            return errorResponse(memberError.message, 500);
-        }
-
-        // Insert general channel
-        const { error: channelError } = await supabase.from('channels').insert({
-            name: 'general',
-            workspace_id: workspace.id,
-        });
-
-        if (channelError) {
-            return errorResponse(channelError.message, 500);
-        }
-
-        return successResponse({ workspaceId: workspace.id });
     } catch (error: unknown) {
-        console.error('Error creating workspace:', error);
-        return errorResponse(error instanceof Error ? error.message : 'Internal server error', 500);
+        console.error('Unexpected error creating workspace:', error);
+
+        if (error instanceof SyntaxError) {
+            return errorResponse('Invalid request format', 400);
+        }
+
+        if (error && typeof error === 'object' && 'code' in error) {
+            const dbError = error as { code: string; detail?: string; constraint?: string };
+
+            switch (dbError.code) {
+                case '23505':
+                    return errorResponse('Workspace name already exists', 409);
+                case '23503': // Foreign key violation
+                    return errorResponse('Invalid user reference', 400);
+                case '23514': // Check constraint violation
+                    return errorResponse('Invalid workspace data', 400);
+                default:
+                    console.error('Database error:', dbError);
+                    return errorResponse('Database operation failed', 500);
+            }
+        }
+
+        return errorResponse('Internal server error', 500);
+    } finally {
+        if (client) {
+            client.release();
+        }
     }
 };
