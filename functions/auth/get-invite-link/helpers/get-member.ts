@@ -3,7 +3,7 @@ import { supabase } from '../utils/supabase-client';
 const getMember = async (workspaceId: string, userId: string) => {
     const { data: member } = await supabase
         .from('workspace_members')
-        .select('id')
+        .select('id, role')
         .eq('workspace_id', workspaceId)
         .eq('user_id', userId)
         .single();
