@@ -459,7 +459,7 @@ Resources:
         GetUserChannels:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/channels/user
+            Path: /workspaces/{workspaceId}/user/channels
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
