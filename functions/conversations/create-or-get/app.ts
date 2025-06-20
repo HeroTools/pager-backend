@@ -1,79 +1,119 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { APIGatewayProxyHandler } from 'aws-lambda';
 import { getUserIdFromToken } from './helpers/auth';
-import { getMember } from './helpers/get-member';
-import { supabase } from './utils/supabase-client';
+import { getWorkspaceMember } from './helpers/get-member';
 import { successResponse, errorResponse } from './utils/response';
+import dbPool from './utils/create-db-pool';
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const handler: APIGatewayProxyHandler = async (event, context) => {
+    context.callbackWaitsForEmptyEventLoop = false;
+    let client;
     try {
         const userId = await getUserIdFromToken(event.headers.Authorization);
-
         if (!userId) {
             return errorResponse('Unauthorized', 401);
         }
 
-        const { workspaceId, memberId } = JSON.parse(event.body || '{}');
-
-        if (!workspaceId || !memberId) {
-            return errorResponse('WorkspaceId and memberId are required', 400);
+        const { participantMemberIds } = JSON.parse(event.body || '{}');
+        if (!participantMemberIds) {
+            return errorResponse('participantMemberIds is required', 400);
         }
 
-        // Get current member (the user making the request)
-        const currentMember = await getMember(workspaceId, userId);
+        const workspaceId = event.pathParameters?.workspaceId;
+        if (!workspaceId) {
+            return errorResponse('Workspace ID is required', 400);
+        }
 
+        client = await dbPool.connect();
+
+        const currentMember = await getWorkspaceMember(client, workspaceId, userId);
         if (!currentMember) {
             return errorResponse('Current member not found', 404);
         }
 
-        // Get the other member
-        const { data: otherMember, error: otherMemberError } = await supabase
-            .from('members')
-            .select('*')
-            .eq('id', memberId)
-            .single();
-
-        if (otherMemberError || !otherMember) {
-            return errorResponse('Other member not found', 404);
+        const allMemberIds = Array.from(new Set([currentMember.id, ...participantMemberIds]));
+        if (allMemberIds.length < 2) {
+            return errorResponse('At least two distinct members are required', 400);
         }
 
-        // Verify both members are in the same workspace
-        if (otherMember.workspace_id !== workspaceId) {
-            return errorResponse('Members must be in the same workspace', 400);
+        const { rows: members } = await client.query(
+            `
+            SELECT id
+            FROM workspace_members
+            WHERE workspace_id = $1
+              AND is_deactivated = false
+              AND id = ANY($2)
+            `,
+            [workspaceId, allMemberIds],
+        );
+
+        if (!members || members.length !== allMemberIds.length) {
+            return errorResponse('One or more members not found or deactivated', 404);
         }
 
-        // Check if conversation already exists between these two members
-        // We need to check both directions: (memberOne, memberTwo) and (memberTwo, memberOne)
-        const { data: existingConversation } = await supabase
-            .from('conversations')
-            .select('*')
-            .eq('workspace_id', workspaceId)
-            .or(
-                `and(member_one_id.eq.${currentMember.id},member_two_id.eq.${otherMember.id}),and(member_one_id.eq.${otherMember.id},member_two_id.eq.${currentMember.id})`,
-            )
-            .single();
+        const findSql = `
+      WITH candidates AS (
+        SELECT cm.conversation_id
+        FROM conversation_members cm
+        JOIN conversations c ON c.id = cm.conversation_id
+        WHERE c.workspace_id = $1
+          AND cm.left_at IS NULL
+          AND cm.workspace_member_id = ANY($2)
+        GROUP BY cm.conversation_id
+        HAVING COUNT(DISTINCT cm.workspace_member_id) = $3
+      )
+      SELECT c.id
+      FROM conversations c
+      JOIN candidates cand ON cand.conversation_id = c.id
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM conversation_members cm2
+        WHERE cm2.conversation_id = c.id
+          AND cm2.left_at IS NULL
+          AND cm2.workspace_member_id <> ALL($2)
+      )
+      LIMIT 1;
+    `;
 
-        if (existingConversation) {
-            return successResponse({ conversationId: existingConversation.id });
+        const { rows: conversation } = await client.query(findSql, [workspaceId, allMemberIds, allMemberIds.length]);
+
+        if (conversation.length > 0) {
+            return successResponse({ conversation_id: conversation[0].id });
         }
 
-        // Create new conversation
-        const { data: newConversation, error: insertError } = await supabase
-            .from('conversations')
-            .insert({
-                workspace_id: workspaceId,
-                member_one_id: currentMember.id,
-                member_two_id: otherMember.id,
-            })
-            .select()
-            .single();
+        const insertConv = await client.query(
+            `INSERT INTO conversations (workspace_id)
+       VALUES ($1)
+       RETURNING id`,
+            [workspaceId],
+        );
+        const conversationId = insertConv.rows[0].id;
 
-        if (insertError) {
-            throw insertError;
+        try {
+            await client.query(
+                `INSERT INTO conversation_members
+           (conversation_id, workspace_member_id)
+         SELECT $1, unnest($2::uuid[])`,
+                [conversationId, allMemberIds],
+            );
+        } catch (err) {
+            await client.query(`DELETE FROM conversations WHERE id = $1`, [conversationId]);
+            throw err;
         }
-
-        return successResponse({ conversationId: newConversation.id });
+        return successResponse({
+            id: conversationId,
+            member_count: allMemberIds.length,
+            update_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            is_group_conversation: true,
+            members: members,
+            other_members: members.filter((member) => member.id !== currentMember.id),
+        });
     } catch (error) {
         console.error('Error creating/getting conversation:', error);
         return errorResponse('Internal server error', 500);
+    } finally {
+        if (client) {
+            client.release();
+        }
     }
 };
