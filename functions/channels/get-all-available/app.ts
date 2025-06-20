@@ -7,50 +7,71 @@ import { successResponse, errorResponse } from './utils/response';
 export const handler: APIGatewayProxyHandler = async (event, context) => {
     context.callbackWaitsForEmptyEventLoop = false;
     let client;
+
     try {
         const userId = await getUserIdFromToken(event.headers.Authorization);
-
         if (!userId) {
             return errorResponse('Unauthorized', 401);
         }
 
         const workspaceId = event.pathParameters?.workspaceId;
-
         if (!workspaceId) {
             return errorResponse('Workspace ID is required', 400);
         }
 
         const member = await getMember(workspaceId, userId);
-
         if (!member) {
             return errorResponse('Not a member of this workspace', 403);
         }
 
-        // Get all available channels (public + user's joined channels) with membership info
         const query = `
-            SELECT 
-                c.*,
-                cm.id as member_id,
-                cm.role as member_role,
-                cm.joined_at as member_joined_at,
-                cm.notifications_enabled as member_notifications_enabled,
-                cm.last_read_message_id as member_last_read_message_id,
-                CASE WHEN cm.id IS NOT NULL THEN true ELSE false END as is_member
+            SELECT
+                c.id,
+                c.name,
+                c.workspace_id,
+                c.created_at,
+                c.updated_at,
+                c.channel_type,
+                c.description,
+                c.settings,
+
+                -- info about *this* user’s membership
+                cm.id                             AS member_id,
+                cm.role                           AS member_role,
+                cm.joined_at                      AS member_joined_at,
+                cm.notifications_enabled          AS member_notifications_enabled,
+                cm.last_read_message_id           AS member_last_read_message_id,
+                (cm.id IS NOT NULL)               AS is_member,
+
+                -- total count of channel_members for this channel
+                COALESCE(cnt.member_count, 0)     AS member_count
+
             FROM channels c
-            LEFT JOIN channel_members cm ON c.id = cm.channel_id AND cm.workspace_member_id = $2
-            WHERE c.workspace_id = $1 
-            AND (
-                c.channel_type = 'public' 
-                OR cm.workspace_member_id = $2
-            )
+
+            -- grab *this* workspace‐member’s row (if any)
+            LEFT JOIN channel_members cm
+              ON c.id = cm.channel_id
+             AND cm.workspace_member_id = $2
+
+            -- pre‐aggregate total members per channel
+            LEFT JOIN (
+                SELECT channel_id, COUNT(*) AS member_count
+                  FROM channel_members
+                 GROUP BY channel_id
+            ) cnt
+              ON cnt.channel_id = c.id
+
+            WHERE c.workspace_id = $1
+              AND (
+                   c.channel_type = 'public'
+                   OR cm.workspace_member_id = $2
+              )
             ORDER BY c.created_at ASC
         `;
 
         client = await dbPool.connect();
-
         const result = await client.query(query, [workspaceId, member.id]);
 
-        // Transform the flat result into the expected structure
         const channels = result.rows.map((row) => ({
             id: row.id,
             name: row.name,
@@ -61,6 +82,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
             description: row.description,
             settings: row.settings,
             is_member: row.is_member,
+            member_count: Number(row.member_count),
             member_info: row.is_member
                 ? {
                       id: row.member_id,
