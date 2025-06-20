@@ -1,10 +1,11 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { APIGatewayProxyHandler } from 'aws-lambda';
 import { getUserIdFromToken } from './helpers/auth';
 import { getWorkspaceMember } from './helpers/get-member';
 import { successResponse, errorResponse } from './utils/response';
 import dbPool from './utils/create-db-pool';
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const handler: APIGatewayProxyHandler = async (event, context) => {
+    context.callbackWaitsForEmptyEventLoop = false;
     let client;
     try {
         const userId = await getUserIdFromToken(event.headers.Authorization);
@@ -111,6 +112,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         console.error('Error creating/getting conversation:', error);
         return errorResponse('Internal server error', 500);
     } finally {
-        client?.release();
+        if (client) {
+            client.release();
+        }
     }
 };
