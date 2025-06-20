@@ -21,7 +21,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         // Check if user is a workspace member and get their workspace_member record
         const { data: workspaceMember } = await supabase
             .from('workspace_members')
-            .select('*')
+            .select('id, role')
             .eq('workspace_id', workspaceId)
             .eq('user_id', userId)
             .single();
@@ -33,7 +33,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         // Get workspace info
         const { data: workspace } = await supabase
             .from('workspaces')
-            .select('name, id, join_code, user_id')
+            .select('name, id, user_id')
             .eq('id', workspaceId)
             .single();
 
@@ -42,7 +42,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             workspace: {
                 id: workspace?.id,
                 name: workspace?.name,
-                join_code: workspace?.join_code,
                 user_id: workspace?.user_id,
                 is_owner: workspace?.user_id === userId,
                 user_role: workspaceMember.role,
