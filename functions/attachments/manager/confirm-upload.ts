@@ -1,48 +1,45 @@
+import { APIGatewayProxyHandler } from 'aws-lambda';
 import { supabase } from './utils/supabase-client';
 import { errorResponse, successResponse } from './utils/response';
 import { getUserIdFromToken } from './helpers/auth';
+import { z } from 'zod';
 
-export const handler = async (event: any) => {
+export const handler: APIGatewayProxyHandler = async (event) => {
+    const workspaceId = event.pathParameters?.workspaceId;
+    const attachmentId = event.pathParameters?.attachmentId;
+    if (!workspaceId || !z.string().uuid().safeParse(workspaceId).success) {
+        return errorResponse('Invalid workspaceId in path parameters', 400);
+    }
+    if (!attachmentId || !z.string().uuid().safeParse(attachmentId).success) {
+        return errorResponse('Invalid attachmentId in path parameters', 400);
+    }
+
     try {
-        const { attachmentId, workspaceId } = JSON.parse(event.body);
-
         const userId = await getUserIdFromToken(event.headers.Authorization);
-
         if (!userId) {
             return errorResponse('Unauthorized', 401);
         }
 
-        // Verify the attachment exists and belongs to the user
-        const { data: attachment, error: fetchError } = await supabase
-            .from('attachments')
-            .select('*')
+        // 1. Verify the file record exists and belongs to the user, and is in 'uploading' state
+        const { data: fileRecord, error: fetchError } = await supabase
+            .from('uploaded_files')
+            .select('id, s3_key, s3_bucket') // Select id for the update operation
             .eq('id', attachmentId)
             .eq('workspace_id', workspaceId)
             .eq('uploaded_by', userId)
             .eq('status', 'uploading')
             .single();
 
-        if (fetchError || !attachment) {
-            return errorResponse('Attachment not found', 404);
+        if (fetchError || !fileRecord) {
+            // Log for debugging if needed, but client doesn't need specifics
+            return errorResponse('File record not found, already confirmed, or unauthorized', 404);
         }
 
-        // Verify file actually exists in storage
-        const { data: fileExists, error: storageError } = await supabase.storage
-            .from('attachments')
-            .list(attachment.workspace_id, {
-                search: attachment.s3_key.split('/').pop(),
-            });
-
-        if (storageError || !fileExists?.length) {
-            // File doesn't exist, cleanup database record
-            await supabase.from('attachments').delete().eq('id', attachmentId);
-
-            return errorResponse('File upload incomplete', 400);
-        }
-
-        // Update attachment status to 'uploaded'
-        const { data: updatedAttachment, error: updateError } = await supabase
-            .from('attachments')
+        // 2. Update file status to 'uploaded' in your database.
+        // We're trusting the client's report of successful upload to S3 via the signed URL.
+        // A separate background process will handle orphaned records if the client lied or failed.
+        const { data: updatedFileRecord, error: updateDbError } = await supabase
+            .from('uploaded_files')
             .update({
                 status: 'uploaded',
                 updated_at: new Date().toISOString(),
@@ -51,13 +48,17 @@ export const handler = async (event: any) => {
             .select()
             .single();
 
-        if (updateError) {
-            return errorResponse('Failed to confirm upload', 500);
+        if (updateDbError) {
+            console.error('Failed to update file record status in DB:', updateDbError);
+            return errorResponse('Failed to finalize file record in database', 500);
         }
 
-        return successResponse({ updatedAttachment });
+        return successResponse({
+            message: 'File upload confirmed successfully',
+            file: updatedFileRecord,
+        });
     } catch (error) {
-        console.error('Confirm upload error:', error);
+        console.error('Unexpected Confirm upload error:', error);
         return errorResponse('Internal server error', 500);
     }
 };
