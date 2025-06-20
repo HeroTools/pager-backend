@@ -21,7 +21,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             id,
             name,
             user_id,
-            join_code,
             created_at,
             updated_at
           )
