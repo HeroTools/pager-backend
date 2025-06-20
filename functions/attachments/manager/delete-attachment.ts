@@ -1,10 +1,21 @@
+import { APIGatewayProxyHandler } from 'aws-lambda';
 import { supabase } from './utils/supabase-client';
 import { errorResponse, successResponse } from './utils/response';
 import { getUserIdFromToken } from './helpers/auth';
+import { z } from 'zod';
 
-export const handler = async (event: any) => {
+export const handler: APIGatewayProxyHandler = async (event) => {
     try {
-        const { attachmentId, workspaceId } = JSON.parse(event.body);
+        const workspaceId = event.pathParameters?.workspaceId;
+        const attachmentId = event.pathParameters?.attachmentId;
+
+        if (!workspaceId || !z.string().uuid().safeParse(workspaceId).success) {
+            return errorResponse('Invalid workspaceId in path parameters', 400);
+        }
+
+        if (!attachmentId || !z.string().uuid().safeParse(attachmentId).success) {
+            return errorResponse('Invalid attachmentId in path parameters', 400);
+        }
 
         const userId = await getUserIdFromToken(event.headers.Authorization);
 
@@ -14,7 +25,7 @@ export const handler = async (event: any) => {
 
         // Get attachment details
         const { data: attachment, error: fetchError } = await supabase
-            .from('attachments')
+            .from('uploaded_files')
             .select('*')
             .eq('id', attachmentId)
             .eq('workspace_id', workspaceId)
@@ -29,7 +40,7 @@ export const handler = async (event: any) => {
         const { data: messageLinks, error: linkError } = await supabase
             .from('message_attachments')
             .select('id')
-            .eq('attachment_id', attachmentId)
+            .eq('uploaded_file_id', attachmentId)
             .limit(1);
 
         if (linkError) {
@@ -38,12 +49,12 @@ export const handler = async (event: any) => {
 
         // If linked to messages, just mark as orphaned for cleanup job
         if (messageLinks && messageLinks.length > 0) {
-            await supabase.from('attachments').update({ status: 'orphaned' }).eq('id', attachmentId);
+            await supabase.from('uploaded_files').update({ status: 'orphaned' }).eq('id', attachmentId);
         } else {
             // Not linked, safe to delete immediately
 
             // Delete from storage
-            const { error: storageError } = await supabase.storage.from('attachments').remove([attachment.s3_key]);
+            const { error: storageError } = await supabase.storage.from('uploaded_files').remove([attachment.s3_key]);
 
             if (storageError) {
                 console.error('Storage deletion error:', storageError);
@@ -51,7 +62,7 @@ export const handler = async (event: any) => {
             }
 
             // Delete from database
-            const { error: dbError } = await supabase.from('attachments').delete().eq('id', attachmentId);
+            const { error: dbError } = await supabase.from('uploaded_files').delete().eq('id', attachmentId);
 
             if (dbError) {
                 return errorResponse('Failed to delete attachment', 500);
