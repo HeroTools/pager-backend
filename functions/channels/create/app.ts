@@ -1,11 +1,12 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { APIGatewayProxyHandler } from 'aws-lambda';
 import { getUserIdFromToken } from './helpers/auth';
 import { getWorkspaceMember } from './helpers/get-member';
 import { successResponse, errorResponse } from './utils/response';
 import { parseChannelName } from './helpers/parse-channel-name';
 import dbPool from './utils/create-db-pool';
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const handler: APIGatewayProxyHandler = async (event, context) => {
+    context.callbackWaitsForEmptyEventLoop = false;
     let client;
     try {
         const userId = await getUserIdFromToken(event.headers.Authorization);
@@ -78,12 +79,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     } catch (error) {
         console.error('Error creating channel:', error);
 
-        // Handle specific PostgreSQL errors
-        if (error.code === '23505') {
-            // Unique constraint violation
+        if ('code' in (error as any) && (error as any).code === '23505') {
             return errorResponse('Channel name already exists', 409);
         }
 
         return errorResponse('Internal server error', 500);
+    } finally {
+        if (client) {
+            client.release();
+        }
     }
 };

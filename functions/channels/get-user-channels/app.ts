@@ -24,20 +24,34 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Not a member of this workspace', 403);
         }
 
-        // Get channels for the workspace
-        const { data: channels, error } = await supabase
+        // Get channels that the user is a member of
+        const { data: rawChannels, error } = await supabase
             .from('channels')
-            .select('*')
+            .select(
+                `
+                *,
+                channel_members!inner(
+                    id,
+                    role,
+                    joined_at,
+                    notifications_enabled,
+                    last_read_message_id
+                )
+            `,
+            )
             .eq('workspace_id', workspaceId)
+            .eq('channel_members.workspace_member_id', member.id)
             .order('created_at', { ascending: true });
 
         if (error) {
             throw error;
         }
 
-        return successResponse(channels || []);
+        const channels = (rawChannels || []).map(({ channel_members, ...channel }) => channel);
+
+        return successResponse({ channels });
     } catch (error) {
-        console.error('Error getting channels:', error);
+        console.error('Error getting user channels:', error);
         return errorResponse('Internal server error', 500);
     }
 };
