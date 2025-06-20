@@ -3,21 +3,31 @@ import { getUserIdFromToken } from './helpers/auth';
 import { getMember } from './helpers/get-member';
 import { errorResponse, successResponse } from './utils/response';
 import { supabase } from './utils/supabase-client';
+import sanitizeFilename from './helpers/sanitize-file-name';
+
+const ALLOWED_FILE_PURPOSES = [
+    'attachments',
+    'profile_pictures',
+    'channel_documents',
+    'temp_uploads',
+    'audio_messages',
+    'video_messages',
+];
 
 const presignedUrlRequestSchema = z.object({
-    workspaceId: z.string().uuid('Invalid workspaceId format (must be a UUID)'),
     fileId: z.string().uuid('Invalid fileId format (must be a UUID)'),
     filename: z.string().min(1, 'Filename cannot be empty'),
     contentType: z.string().min(1, 'Content type cannot be empty'),
     sizeBytes: z.number().int().min(0, 'File size must be a non-negative integer'),
+    filePurpose: z.enum(ALLOWED_FILE_PURPOSES as [string, ...string[]]),
 });
 
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
 const ALLOWED_CONTENT_TYPES_PREFIXES = [
     'image/',
     'application/pdf',
     'application/msword',
-    'application/vnd.openxmlformats-officedocument',
+    'application/vnd.openxmlformats-officedocument', // Covers docx, xlsx, pptx
     'video/',
     'audio/',
     'text/',
@@ -25,14 +35,19 @@ const ALLOWED_CONTENT_TYPES_PREFIXES = [
 ];
 
 export const handler = async (event: any) => {
+    let requestBody;
     try {
-        let requestBody;
-        try {
+        if (typeof event.body === 'string') {
             requestBody = JSON.parse(event.body);
-        } catch (parseError) {
-            return errorResponse('Invalid JSON in request body', 400);
+        } else {
+            requestBody = event.body;
         }
+    } catch (parseError) {
+        console.error('JSON Parse Error:', parseError);
+        return errorResponse('Invalid JSON in request body', 400);
+    }
 
+    try {
         const validationResult = presignedUrlRequestSchema.safeParse(requestBody);
 
         if (!validationResult.success) {
@@ -41,7 +56,12 @@ export const handler = async (event: any) => {
             return errorResponse(`Validation failed: ${errorMessages.join(', ')}`, 400);
         }
 
-        const { workspaceId, fileId, filename, contentType, sizeBytes } = validationResult.data;
+        const { fileId, filename, contentType, sizeBytes, filePurpose } = validationResult.data;
+
+        const workspaceId = event.pathParameters?.workspaceId;
+        if (!workspaceId || !z.string().uuid().safeParse(workspaceId).success) {
+            return errorResponse('Invalid workspaceId in path parameters', 400);
+        }
 
         const userId = await getUserIdFromToken(event.headers.Authorization);
 
@@ -67,47 +87,54 @@ export const handler = async (event: any) => {
         if (!fileExtension) {
             return errorResponse('Filename must have an extension', 400);
         }
-        const filePath = `${workspaceId}/${fileId}.${fileExtension}`;
 
-        const { error: dbError } = await supabase.from('attachments').insert({
+        const sanitizedFilename = sanitizeFilename(filename);
+
+        // Format: files/{workspace-id}/{file-purpose}/{unique-file-id}/{sanitized-filename.ext}
+        const s3BucketName = 'files';
+        const s3Key = `${workspaceId}/${filePurpose}/${fileId}/${sanitizedFilename}`;
+
+        const { error: dbError } = await supabase.from('uploaded_files').insert({
             id: fileId,
             workspace_id: workspaceId,
-            s3_bucket: 'attachments',
-            s3_key: filePath,
+            s3_bucket: s3BucketName,
+            s3_key: s3Key,
             original_filename: filename,
             content_type: contentType,
             size_bytes: sizeBytes,
             uploaded_by: userId,
             status: 'uploading',
+            file_purpose: filePurpose,
         });
 
         if (dbError) {
             console.error('Supabase DB Insert Error:', dbError);
-            return errorResponse('Failed to create attachment record', 500);
+            return errorResponse('Failed to create file record in database', 500);
         }
 
+        // --- Generate Presigned Upload URL ---
         const { data: presignedData, error: presignedError } = await supabase.storage
-            .from('attachments')
-            .createSignedUploadUrl(filePath, {
-                upsert: true,
+            .from(s3BucketName) // Use the new bucket name
+            .createSignedUploadUrl(s3Key, {
+                // Use the full S3 key
+                upsert: true, // Allow upserting if a record with the same key already exists (e.g., retry)
             });
 
         if (presignedError) {
             console.error('Supabase Presigned URL Error:', presignedError);
-            await supabase.from('attachments').delete().eq('id', fileId);
-
-            return errorResponse('Failed to generate presigned URL', 500);
+            await supabase.from('uploaded_files').delete().eq('id', fileId);
+            return errorResponse('Failed to generate presigned upload URL', 500);
         }
 
-        const { data: publicUrlData } = supabase.storage.from('attachments').getPublicUrl(filePath);
+        const { data: publicUrlData } = supabase.storage.from(s3BucketName).getPublicUrl(s3Key);
 
         return successResponse({
-            signedUrl: presignedData.signedUrl,
+            signed_url: presignedData.signedUrl,
             token: presignedData.token,
-            path: filePath,
-            publicUrl: publicUrlData.publicUrl,
-            attachmentId: fileId,
-            expiresIn: 3600,
+            path: s3Key,
+            public_url: publicUrlData.publicUrl,
+            file_id: fileId,
+            expires_in: 3600,
         });
     } catch (error) {
         console.error('Unexpected Presigned URL error:', error);
