@@ -422,20 +422,44 @@ Resources:
         EntryPoints:
           - app.ts
 
-  # GET CHANNELS
-  GetChannelsFunction:
+  # GET ALL AVAILABLE CHANNELS
+  GetAllAvailableChannelsFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: functions/channels/get
+      CodeUri: functions/channels/get-all-available
       Handler: app.handler
       Runtime: nodejs20.x
       Architectures:
         - arm64
       Events:
-        GetChannels:
+        GetAllAvailableChannels:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/channels
+            Path: /workspaces/{workspaceId}/channels/all-available
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET USER'S CHANNELS
+  GetUserChannelsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels/get-user-channels
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetUserChannels:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels/user
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
