@@ -2,6 +2,7 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getUserIdFromToken } from './helpers/auth';
 import { supabase } from './utils/supabase-client';
 import { errorResponse, successResponse } from './utils/response';
+import { getMember } from './helpers/get-member';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
@@ -22,13 +23,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Name is required', 400);
         }
 
-        // Check if user is a member
-        const { data: member } = await supabase
-            .from('members')
-            .select('*')
-            .eq('workspace_id', workspaceId)
-            .eq('user_id', userId)
-            .single();
+        const member = await getMember(workspaceId, userId);
 
         if (!member) {
             return errorResponse('Not a member of this workspace', 403);
@@ -41,7 +36,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             throw error;
         }
 
-        return successResponse({ workspaceId });
+        return successResponse({ workspace_id: workspaceId });
     } catch (error) {
         console.error('Error updating workspace:', error);
         return errorResponse('Internal server error', 500);
