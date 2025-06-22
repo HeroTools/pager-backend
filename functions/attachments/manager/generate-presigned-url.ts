@@ -94,6 +94,10 @@ export const handler = async (event: any) => {
         const s3BucketName = 'files';
         const s3Key = `${workspaceId}/${filePurpose}/${fileId}/${sanitizedFilename}`;
 
+        // Generate public URL first
+        const { data: publicUrlData } = supabase.storage.from(s3BucketName).getPublicUrl(s3Key);
+
+        // Insert file record with public URL
         const { error: dbError } = await supabase.from('uploaded_files').insert({
             id: fileId,
             workspace_id: workspaceId,
@@ -105,6 +109,7 @@ export const handler = async (event: any) => {
             uploaded_by: userId,
             status: 'uploading',
             file_purpose: filePurpose,
+            public_url: publicUrlData.publicUrl,
         });
 
         if (dbError) {
@@ -112,12 +117,11 @@ export const handler = async (event: any) => {
             return errorResponse('Failed to create file record in database', 500);
         }
 
-        // --- Generate Presigned Upload URL ---
+        // Generate Presigned Upload URL
         const { data: presignedData, error: presignedError } = await supabase.storage
-            .from(s3BucketName) // Use the new bucket name
+            .from(s3BucketName)
             .createSignedUploadUrl(s3Key, {
-                // Use the full S3 key
-                upsert: true, // Allow upserting if a record with the same key already exists (e.g., retry)
+                upsert: true,
             });
 
         if (presignedError) {
@@ -125,8 +129,6 @@ export const handler = async (event: any) => {
             await supabase.from('uploaded_files').delete().eq('id', fileId);
             return errorResponse('Failed to generate presigned upload URL', 500);
         }
-
-        const { data: publicUrlData } = supabase.storage.from(s3BucketName).getPublicUrl(s3Key);
 
         return successResponse({
             signed_url: presignedData.signedUrl,

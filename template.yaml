@@ -1274,48 +1274,48 @@ Resources:
         EntryPoints:
           - generate-presigned-url.ts
 
-ConfirmUploadFunction:
-  Type: AWS::Serverless::Function
-  Properties:
-    CodeUri: functions/attachments/manager
-    Handler: confirm-upload.handler
-    Runtime: nodejs20.x
-    Architectures:
-      - arm64
-    Events:
-      ConfirmUpload:
-        Type: Api
-        Properties:
-          Path: /workspaces/{workspaceId}/attachments/{attachmentId}/confirm-upload
-          Method: post
-          RestApiId: !Ref MainApi
-  Metadata:
-    BuildMethod: esbuild
-    BuildProperties:
-      Minify: true
-      Target: es2022
-      EntryPoints:
-        - confirm-upload.ts
+  ConfirmUploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/attachments/manager
+      Handler: confirm-upload.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        ConfirmUpload:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/attachments/{attachmentId}/confirm-upload
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - confirm-upload.ts
 
-DeleteAttachmentFunction:
-  Type: AWS::Serverless::Function
-  Properties:
-    CodeUri: functions/attachments/manager
-    Handler: delete-attachment.handler
-    Runtime: nodejs20.x
-    Architectures:
-      - arm64
-    Events:
-      DeleteAttachment:
-        Type: Api
-        Properties:
-          Path: /workspaces/{workspaceId}/attachments/{attachmentId}
-          Method: delete
-          RestApiId: !Ref MainApi
-  Metadata:
-    BuildMethod: esbuild
-    BuildProperties:
-      Minify: true
-      Target: es2022
-      EntryPoints:
-        - delete-attachment.ts
+  DeleteAttachmentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/attachments/manager
+      Handler: delete-attachment.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        DeleteAttachment:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/attachments/{attachmentId}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - delete-attachment.ts
