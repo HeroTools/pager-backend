@@ -1,7 +1,6 @@
 export interface MessageWithUser {
     id: string;
     body: string;
-    attachment_id: string | null;
     workspace_member_id: string;
     workspace_id: string;
     channel_id: string;
@@ -71,7 +70,6 @@ export interface ChannelData {
 export interface Message {
     id: string;
     body: string;
-    attachment_id: string | null;
     workspace_member_id: string;
     workspace_id: string;
     channel_id: string | null;
@@ -94,12 +92,12 @@ export interface EnrichedMessage extends Message {
         email: string;
         image: string | null;
     };
-    attachment?: {
+    attachments?: Array<{
         id: string;
         url: string;
         content_type: string;
         size_bytes: number;
-    };
+    }>;
     reactions?: Array<{
         id: string;
         value: string;
