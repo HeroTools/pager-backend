@@ -1,23 +1,34 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
-import { supabase } from './utils/supabase-client';
-import { errorResponse, successResponse } from './utils/response';
-import { getUserIdFromToken } from './helpers/auth';
 import { z } from 'zod';
+import { supabase } from './utils/supabase-client';
+import { errorResponse, setCorsHeaders, successResponse } from './utils/response';
+import { getUserIdFromToken } from './helpers/auth';
 
 export const handler: APIGatewayProxyHandler = async (event) => {
+    const origin = event.headers.Origin || event.headers.origin;
+    const corsHeaders = setCorsHeaders(origin, 'POST');
+
+    // 1) Handle preflight
+    if (event.httpMethod === 'OPTIONS') {
+        return {
+            statusCode: 200,
+            headers: corsHeaders,
+            body: '',
+        };
+    }
     const workspaceId = event.pathParameters?.workspaceId;
     const attachmentId = event.pathParameters?.attachmentId;
     if (!workspaceId || !z.string().uuid().safeParse(workspaceId).success) {
-        return errorResponse('Invalid workspaceId in path parameters', 400);
+        return errorResponse('Invalid workspaceId in path parameters', 400, corsHeaders);
     }
     if (!attachmentId || !z.string().uuid().safeParse(attachmentId).success) {
-        return errorResponse('Invalid attachmentId in path parameters', 400);
+        return errorResponse('Invalid attachmentId in path parameters', 400, corsHeaders);
     }
 
     try {
         const userId = await getUserIdFromToken(event.headers.Authorization);
         if (!userId) {
-            return errorResponse('Unauthorized', 401);
+            return errorResponse('Unauthorized', 401, corsHeaders);
         }
 
         // 1. Verify the file record exists and belongs to the user, and is in 'uploading' state
@@ -32,7 +43,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
         if (fetchError || !fileRecord) {
             // Log for debugging if needed, but client doesn't need specifics
-            return errorResponse('File record not found, already confirmed, or unauthorized', 404);
+            return errorResponse('File record not found, already confirmed, or unauthorized', 404, corsHeaders);
         }
 
         // 2. Update file status to 'uploaded' in your database.
@@ -45,20 +56,26 @@ export const handler: APIGatewayProxyHandler = async (event) => {
                 updated_at: new Date().toISOString(),
             })
             .eq('id', attachmentId)
+            .eq('workspace_id', workspaceId)
+            .eq('status', 'uploading')
             .select()
             .single();
 
         if (updateDbError) {
             console.error('Failed to update file record status in DB:', updateDbError);
-            return errorResponse('Failed to finalize file record in database', 500);
+            return errorResponse('Failed to finalize file record in database', 500, corsHeaders);
         }
 
-        return successResponse({
-            message: 'File upload confirmed successfully',
-            file: updatedFileRecord,
-        });
+        return successResponse(
+            {
+                message: 'File upload confirmed successfully',
+                file: updatedFileRecord,
+            },
+            200,
+            corsHeaders,
+        );
     } catch (error) {
         console.error('Unexpected Confirm upload error:', error);
-        return errorResponse('Internal server error', 500);
+        return errorResponse('Internal server error', 500, corsHeaders);
     }
 };
