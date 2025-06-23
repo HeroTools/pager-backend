@@ -1116,7 +1116,7 @@ Resources:
         ToggleReaction:
           Type: Api
           Properties:
-            Path: /reactions/toggle
+            Path: /workspaces/{workspaceId}/messages/{messageId}/reactions/toggle
             Method: post
             RestApiId: !Ref MainApi
     Metadata:
