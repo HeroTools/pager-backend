@@ -3,7 +3,7 @@ import { z, ZodError } from 'zod';
 import { PoolClient } from 'pg';
 import { getUserIdFromToken } from './helpers/auth';
 import { getWorkspaceMember } from './helpers/get-member';
-import { successResponse, errorResponse } from './utils/response';
+import { successResponse, errorResponse, setCorsHeaders } from './utils/response';
 import dbPool from './utils/create-db-pool';
 
 const removeMembersRequestSchema = z.object({
@@ -19,10 +19,13 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
     context.callbackWaitsForEmptyEventLoop = false;
     let client: PoolClient | undefined;
 
+    const origin = event.headers.Origin || event.headers.origin;
+    const corsHeaders = setCorsHeaders(origin, 'DELETE,POST,OPTIONS');
+
     try {
         const userId = await getUserIdFromToken(event.headers.Authorization);
         if (!userId) {
-            return errorResponse('Unauthorized', 401);
+            return errorResponse('Unauthorized', 401, corsHeaders);
         }
 
         const { workspaceId, channelId } = pathParamsSchema.parse(event.pathParameters);
@@ -32,7 +35,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
 
         const requestingMember = await getWorkspaceMember(client, workspaceId, userId);
         if (!requestingMember) {
-            return errorResponse('User is not a member of this workspace', 403);
+            return errorResponse('User is not a member of this workspace', 403, corsHeaders);
         }
 
         // Check if requesting user is a member of the channel and get their role
@@ -45,7 +48,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
         );
 
         if (channelMemberResult.rows.length === 0) {
-            return errorResponse('User is not a member of this channel', 403);
+            return errorResponse('User is not a member of this channel', 403, corsHeaders);
         }
 
         const { role: requestingUserChannelRole } = channelMemberResult.rows[0];
@@ -61,7 +64,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
         );
 
         if (channelMembersResult.rows.length === 0) {
-            return errorResponse('No valid channel members found to remove', 404);
+            return errorResponse('No valid channel members found to remove', 404, corsHeaders);
         }
 
         const foundMemberIds = new Set(channelMembersResult.rows.map((row: any) => row.workspace_member_id));
@@ -94,7 +97,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
         }
 
         if (unauthorizedRemovals.length > 0) {
-            return errorResponse('Insufficient permissions to remove some members', 403, {
+            return errorResponse('Insufficient permissions to remove some members', 403, corsHeaders, {
                 unauthorized: unauthorizedRemovals,
             });
         }
@@ -120,31 +123,35 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
                 role: member.role,
             }));
 
-        return successResponse({
-            channel_id: channelId,
-            removed_members: removedMembersDetails,
-            not_found_members: notFoundMemberIds,
-            summary: {
-                total_requested: memberIds.length,
-                successfully_removed: removedMemberIds.length,
-                not_found: notFoundMemberIds.length,
+        return successResponse(
+            {
+                channel_id: channelId,
+                removed_members: removedMembersDetails,
+                not_found_members: notFoundMemberIds,
+                summary: {
+                    total_requested: memberIds.length,
+                    successfully_removed: removedMemberIds.length,
+                    not_found: notFoundMemberIds.length,
+                },
             },
-        });
+            200,
+            corsHeaders,
+        );
     } catch (error) {
         console.error('Error removing members from channel:', error);
 
         if (error instanceof ZodError) {
-            return errorResponse('Invalid request data', 400, error.errors);
+            return errorResponse('Invalid request data', 400, corsHeaders, { details: error.errors });
         }
 
         if (error instanceof Error && 'code' in error) {
             switch ((error as any).code) {
                 case '23503':
-                    return errorResponse('Invalid channel or member reference', 400);
+                    return errorResponse('Invalid channel or member reference', 400, corsHeaders);
             }
         }
 
-        return errorResponse('Internal server error', 500);
+        return errorResponse('Internal server error', 500, corsHeaders);
     } finally {
         client?.release();
     }
