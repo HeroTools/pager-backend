@@ -5,7 +5,6 @@ import { errorResponse, setCorsHeaders, successResponse } from './utils/response
 import { getUserIdFromToken } from './helpers/auth';
 
 export const handler: APIGatewayProxyHandler = async (event) => {
-    console.log(event);
     const origin = event.headers.Origin || event.headers.origin;
     const corsHeaders = setCorsHeaders(origin, 'POST');
 
