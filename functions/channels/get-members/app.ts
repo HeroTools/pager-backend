@@ -4,6 +4,12 @@ import { getWorkspaceMember } from './helpers/get-member';
 import { supabase } from './utils/supabase-client';
 import { setCorsHeaders, successResponse, errorResponse } from './utils/response';
 
+interface ChannelMember {
+    id: string;
+    role: string;
+    workspace_member_id: string;
+}
+
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     const origin = event.headers.Origin || event.headers.origin;
     const corsHeaders = setCorsHeaders(origin, 'GET,POST,OPTIONS');
@@ -50,17 +56,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             .select(`
                 id,
                 role,
-                workspace_member:workspace_member_id (
-                    id,
-                    user_id,
-                    role,
-                    user:user_id (
-                        id,
-                        email,
-                        name,
-                        image
-                    )
-                )
+                workspace_member_id
             `)
             .eq('channel_id', channelId);
         if (membersError) {
@@ -68,16 +64,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Failed to fetch channel members', 500, corsHeaders, { details: membersError.message || membersError });
         }
 
-        // Flatten the member info to return user info for each channel member
-        const members = (channelMembers || []).map((cm: any) => {
-            return {
-                channel_member_id: cm.id,
-                channel_role: cm.role,
-                workspace_member_id: cm.workspace_member?.id,
-                workspace_role: cm.workspace_member?.role,
-                user: cm.workspace_member?.user || null
-            };
-        });
+        // Map to simplified response format
+        const members = (channelMembers || []).map((cm: ChannelMember) => ({
+            channel_member_id: cm.id,
+            channel_role: cm.role,
+            workspace_member_id: cm.workspace_member_id
+        }));
         return successResponse(members, 200, corsHeaders);
     } catch (error) {
         console.error('Error getting channel members:', error);
