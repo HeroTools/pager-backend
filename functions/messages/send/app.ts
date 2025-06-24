@@ -52,6 +52,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         const requestBodyResult = SendMessageSchema.safeParse(event.body ? JSON.parse(event.body) : {});
         if (!requestBodyResult.success) {
+            console.log(requestBodyResult.error);
             return errorResponse(
                 `Invalid request: ${requestBodyResult.error.errors.map((e) => e.message).join(', ')}`,
                 400,
