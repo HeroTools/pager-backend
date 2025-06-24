@@ -296,6 +296,30 @@ Resources:
         EntryPoints:
           - app.ts
 
+  # GET MESSAGE REPLIES
+  GetMessageRepliesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/messages/get-message-replies
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetMessageReplies:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/messages/{messageId}/replies
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
   # Typing Indicator
   TypingIndicatorFunction:
     Type: AWS::Serverless::Function
