@@ -7,7 +7,7 @@ import { successResponse, errorResponse, setCorsHeaders } from './utils/response
 import dbPool from './utils/create-db-pool';
 
 const removeMembersRequestSchema = z.object({
-    memberIds: z.string().array().min(1, 'memberIds array cannot be empty'),
+    channelMemberIds: z.string().array().min(1, 'channelMemberIds array cannot be empty'),
 });
 
 const pathParamsSchema = z.object({
@@ -29,7 +29,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
         }
 
         const { workspaceId, channelId } = pathParamsSchema.parse(event.pathParameters);
-        const { memberIds } = removeMembersRequestSchema.parse(JSON.parse(event.body || '{}'));
+        const { channelMemberIds } = removeMembersRequestSchema.parse(JSON.parse(event.body || '{}'));
 
         client = await dbPool.connect();
 
@@ -40,9 +40,8 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
 
         // Check if requesting user is a member of the channel and get their role
         const channelMemberResult = await client.query(
-            `SELECT cm.role, c.channel_type 
+            `SELECT cm.role 
              FROM channel_members cm
-             JOIN channels c ON cm.channel_id = c.id
              WHERE cm.channel_id = $1 AND cm.workspace_member_id = $2`,
             [channelId, requestingMember.id],
         );
@@ -55,20 +54,17 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
 
         // Get channel members to remove and their roles
         const channelMembersResult = await client.query(
-            `SELECT cm.workspace_member_id, cm.role, wm.user_id, u.name, u.email
+            `SELECT cm.id as channel_member_id, cm.workspace_member_id, cm.role
              FROM channel_members cm
-             JOIN workspace_members wm ON cm.workspace_member_id = wm.id
-             JOIN users u ON wm.user_id = u.id
-             WHERE cm.channel_id = $1 AND cm.workspace_member_id = ANY($2::uuid[])`,
-            [channelId, memberIds],
+             WHERE cm.channel_id = $1 AND cm.id = ANY($2::uuid[])`,
+            [channelId, channelMemberIds],
         );
 
         if (channelMembersResult.rows.length === 0) {
             return errorResponse('No valid channel members found to remove', 404, corsHeaders);
         }
 
-        const foundMemberIds = new Set(channelMembersResult.rows.map((row: any) => row.workspace_member_id));
-        const notFoundMemberIds = memberIds.filter((id) => !foundMemberIds.has(id));
+        const foundChannelMemberIds = new Set(channelMembersResult.rows.map((row: any) => row.channel_member_id));
 
         // Check permissions for each member to be removed
         const membersToRemove = channelMembersResult.rows;
@@ -85,12 +81,12 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
             // 3. Members can always remove themselves
             if (!isRemovingSelf && !isRequesterAdmin) {
                 unauthorizedRemovals.push({
-                    memberId: member.workspace_member_id,
+                    channelMemberId: member.channel_member_id,
                     reason: 'Only channel admins can remove other members',
                 });
             } else if (isTargetAdmin && !isRemovingSelf) {
                 unauthorizedRemovals.push({
-                    memberId: member.workspace_member_id,
+                    channelMemberId: member.channel_member_id,
                     reason: 'Channel admins cannot be removed by other users',
                 });
             }
@@ -103,36 +99,27 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
         }
 
         // Remove the members from the channel
-        const removeMembersResult = await client.query(
+        await client.query(
             `DELETE FROM channel_members 
-             WHERE channel_id = $1 AND workspace_member_id = ANY($2::uuid[])
-             RETURNING workspace_member_id`,
-            [channelId, Array.from(foundMemberIds)],
+             WHERE id = ANY($1::uuid[])`,
+            [Array.from(foundChannelMemberIds)],
         );
 
-        const removedMemberIds = removeMembersResult.rows.map((row: any) => row.workspace_member_id);
+        // Get the remaining channel members
+        const remainingMembersResult = await client.query(
+            `SELECT cm.id as channel_member_id
+             FROM channel_members cm
+             WHERE cm.channel_id = $1`,
+            [channelId],
+        );
 
-        // Prepare response data
-        const removedMembersDetails = membersToRemove
-            .filter((member: any) => removedMemberIds.includes(member.workspace_member_id))
-            .map((member: any) => ({
-                workspaceMemberId: member.workspace_member_id,
-                userId: member.user_id,
-                name: member.name,
-                email: member.email,
-                role: member.role,
-            }));
+        const remainingMembers = remainingMembersResult.rows.map((row: any) => ({
+            channelMemberId: row.channel_member_id,
+        }));
 
         return successResponse(
             {
-                channel_id: channelId,
-                removed_members: removedMembersDetails,
-                not_found_members: notFoundMemberIds,
-                summary: {
-                    total_requested: memberIds.length,
-                    successfully_removed: removedMemberIds.length,
-                    not_found: notFoundMemberIds.length,
-                },
+                members: remainingMembers,
             },
             200,
             corsHeaders,
