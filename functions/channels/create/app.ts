@@ -71,10 +71,10 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
         const channelData = result.rows[0];
 
         return successResponse({
-            channelId: channelData.channel_id,
+            id: channelData.channel_id,
             name: channelData.name,
-            channelType: channelData.channel_type,
-            createdAt: channelData.created_at,
+            channel_type: channelData.channel_type,
+            created_at: channelData.created_at,
         });
     } catch (error) {
         console.error('Error creating channel:', error);
