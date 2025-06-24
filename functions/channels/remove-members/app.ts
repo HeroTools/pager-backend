@@ -105,21 +105,9 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
             [Array.from(foundChannelMemberIds)],
         );
 
-        // Get the remaining channel members
-        const remainingMembersResult = await client.query(
-            `SELECT cm.id as channel_member_id
-             FROM channel_members cm
-             WHERE cm.channel_id = $1`,
-            [channelId],
-        );
-
-        const remainingMembers = remainingMembersResult.rows.map((row: any) => ({
-            channelMemberId: row.channel_member_id,
-        }));
-
         return successResponse(
             {
-                members: remainingMembers,
+                success: true
             },
             200,
             corsHeaders,
