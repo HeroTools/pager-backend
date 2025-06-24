@@ -18,7 +18,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     try {
-        console.log("i got here too");
         const userId = await getUserIdFromToken(event.headers.Authorization);
         if (!userId) {
             return errorResponse('Unauthorized', 401, corsHeaders);
