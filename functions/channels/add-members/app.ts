@@ -79,42 +79,18 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
         }
 
         const valuesPlaceholder = newMemberIds
-            .map((_, index) => `($1, $${index + 2}, $${newMemberIds.length + 2})`)
+            .map((_, index) => `($1, $${index + 2}, 'member')`)
             .join(', ');
         const inviteQuery = `
             INSERT INTO channel_members (channel_id, workspace_member_id, role)
             VALUES ${valuesPlaceholder}
-            RETURNING workspace_member_id, joined_at
         `;
 
         const inviteParams = [channelId, ...newMemberIds];
-        const newChannelMembers = await client.query(inviteQuery, inviteParams);
-
-        const invitedMembersResult = await client.query(
-            `SELECT wm.id as "workspaceMemberId", u.id as "userId", u.name, u.email
-             FROM workspace_members wm
-             JOIN users u ON wm.user_id = u.id
-             WHERE wm.id = ANY($1::uuid[])`,
-            [newMemberIds],
-        );
-
-        const invitedMembersMap = new Map(newChannelMembers.rows.map((m) => [m.workspace_member_id, m.joined_at]));
-
-        const invitedMembersDetails = invitedMembersResult.rows.map((member) => ({
-            ...member,
-            role: 'member',
-            joinedAt: invitedMembersMap.get(member.workspaceMemberId),
-        }));
+        await client.query(inviteQuery, inviteParams);
 
         return successResponse({
-            channel_id: channelId,
-            invited_members: invitedMembersDetails,
-            already_members: Array.from(existingMemberIds),
-            summary: {
-                total_requested: memberIds.length,
-                newly_invited: newMemberIds.length,
-                already_in_channel: existingMemberIds.size,
-            },
+            success: true
         });
     } catch (error) {
         console.error('Error inviting members to channel:', error);
