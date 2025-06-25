@@ -40,7 +40,7 @@ export const setCorsHeaders = (origin: string | undefined, additionalMethods = '
 export const errorResponse = (
     message: string,
     statusCode = 500,
-    additionalHeaders: Record<string, any> = {},
+    additionalHeaders: Record<string, string> = {},
     errorDetails = {},
 ) => {
     const headers = { ...additionalHeaders };
@@ -51,11 +51,11 @@ export const errorResponse = (
     };
 };
 
-export const successResponse = (body: unknown, statusCode = 200, additionalHeaders: Record<string, any> = {}) => {
+export const successResponse = (body: unknown, statusCode = 200, additionalHeaders: Record<string, string> = {}) => {
     const headers = { ...additionalHeaders };
     return {
         statusCode,
         body: JSON.stringify(body),
         headers,
     };
-};
+}; 
