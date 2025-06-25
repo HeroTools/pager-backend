@@ -14,7 +14,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const origin = event.headers.Origin || event.headers.origin;
     const corsHeaders = setCorsHeaders(origin, 'GET,POST,OPTIONS');
 
-    // 1) Handle preflight
     if (event.httpMethod === 'OPTIONS') {
         return {
             statusCode: 204,
@@ -40,7 +39,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Not a member of this workspace', 403, corsHeaders);
         }
 
-        // Check if channel exists
         const { data: channel, error: channelError } = await supabase
             .from('channels')
             .select('id')
@@ -50,25 +48,27 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Channel not found', 404, corsHeaders);
         }
 
-        // Get all members of the channel, including user info
         const { data: channelMembers, error: membersError } = await supabase
             .from('channel_members')
-            .select(`
+            .select(
+                `
                 id,
                 role,
                 workspace_member_id
-            `)
+            `,
+            )
             .eq('channel_id', channelId);
         if (membersError) {
             console.error('Supabase error fetching channel members:', membersError);
-            return errorResponse('Failed to fetch channel members', 500, corsHeaders, { details: membersError.message || membersError });
+            return errorResponse('Failed to fetch channel members', 500, corsHeaders, {
+                details: membersError.message || membersError,
+            });
         }
 
-        // Map to simplified response format
         const members = (channelMembers || []).map((cm: ChannelMember) => ({
             channel_member_id: cm.id,
             channel_role: cm.role,
-            workspace_member_id: cm.workspace_member_id
+            workspace_member_id: cm.workspace_member_id,
         }));
         return successResponse(members, 200, corsHeaders);
     } catch (error) {
