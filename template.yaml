@@ -542,6 +542,30 @@ Resources:
         EntryPoints:
           - app.ts
 
+  # GET CHANNEL MEMBERS
+  GetChannelMembersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels/get-members
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetChannelMembers:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels/{channelId}/members
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
   # CREATE CHANNEL
   CreateChannelFunction:
     Type: AWS::Serverless::Function
