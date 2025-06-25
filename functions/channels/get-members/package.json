@@ -7,8 +7,7 @@
   "author": "Zach Bresler",
   "license": "MIT",
   "dependencies": {
-    "@supabase/supabase-js": "^2.50.0",
-    "aws-lambda": "^1.0.7"
+    "@supabase/supabase-js": "^2.50.0"
   },
   "scripts": {
     "unit": "jest",
