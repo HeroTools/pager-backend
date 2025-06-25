@@ -76,18 +76,13 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
             const isRequesterAdmin = requestingUserChannelRole === 'admin';
 
             // Business rules:
-            // 1. Channel admins cannot be removed by non-admins
-            // 2. Only channel admins can remove other members (except self-removal)
+            // 1. Non-admins cannot remove any members (except themselves)
+            // 2. Admins can remove any member (including other admins)
             // 3. Members can always remove themselves
             if (!isRemovingSelf && !isRequesterAdmin) {
                 unauthorizedRemovals.push({
                     channelMemberId: member.channel_member_id,
                     reason: 'Only channel admins can remove other members',
-                });
-            } else if (isTargetAdmin && !isRemovingSelf) {
-                unauthorizedRemovals.push({
-                    channelMemberId: member.channel_member_id,
-                    reason: 'Channel admins cannot be removed by other users',
                 });
             }
         }
