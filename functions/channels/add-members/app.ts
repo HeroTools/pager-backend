@@ -117,7 +117,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
     let params, body;
     try {
         params = pathParamsSchema.parse(event.pathParameters);
-        body = inviteMembersRequestSchema.parse(JSON.parse(event.body!));
+        body = inviteMembersRequestSchema.parse(JSON.parse(event.body || '{}'));
     } catch (err) {
         if (err instanceof ZodError) {
             return errorResponse('Validation failed', 400, { errors: err.errors });
@@ -128,7 +128,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
     const { workspaceId, channelId } = params;
     const { memberIds } = body;
 
-    const userId = await getUserIdFromToken(event.headers.Authorization);
+    const userId = await getUserIdFromToken(event.headers.Authorization || event.headers.authorization);
     if (!userId) {
         throw new AuthError();
     }
