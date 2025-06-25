@@ -1,7 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { z } from 'zod';
+import { User, Session } from '@supabase/supabase-js';
 import { supabase } from './utils/supabase-client';
 import { errorResponse, successResponse } from './utils/response';
-import { z } from 'zod';
+import { parseRpcError } from './utils/errors';
 
 const registerSchema = z.object({
     email: z.string().email('Invalid email format'),
@@ -15,211 +17,110 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         if (event.httpMethod !== 'POST') {
             return errorResponse('Method not allowed', 405);
         }
-        let parsedBody;
-        try {
-            const body = JSON.parse(event.body || '{}');
-            parsedBody = registerSchema.parse(body);
-        } catch (error) {
-            if (error instanceof z.ZodError) {
-                const firstError = error.errors[0];
-                return errorResponse(firstError.message, 400);
-            }
-            return errorResponse('Invalid JSON in request body', 400);
-        }
 
+        const body = JSON.parse(event.body || '{}');
+        const parsedBody = registerSchema.parse(body);
         const { email, password, name, inviteToken } = parsedBody;
 
-        let inviteData = null;
-        let workspaceToJoin = null;
-
-        if (inviteToken) {
-            const now = new Date().toISOString();
-            const { data: tokenData, error: tokenError } = await supabase
-                .from('workspace_invite_tokens')
-                .select('*, workspaces!inner(id, name)')
-                .eq('token', inviteToken)
-                .gte('expires_at', now)
-                .single();
-
-            if (tokenError || !tokenData) {
-                return errorResponse('Invalid or expired invite token', 400);
-            }
-
-            if (tokenData.max_uses && tokenData.usage_count >= tokenData.max_uses) {
-                return errorResponse('Invite token has reached its usage limit', 400);
-            }
-
-            inviteData = tokenData;
-            workspaceToJoin = tokenData.workspaces;
-        }
+        let authResult: { user: User; session: Session };
+        let isNewUser = false;
+        let workspaceJoined: { id: string; name: string } | null = null;
 
         const { data: existingUser, error: userCheckError } = await supabase
             .from('users')
-            .select('id, email')
+            .select('id')
             .eq('email', email)
             .single();
 
-        // Only return error if it's NOT a "no rows found" error
         if (userCheckError && userCheckError.code !== 'PGRST116') {
-            console.error('User check error:', userCheckError);
             return errorResponse('Database error during user check', 500);
         }
 
-        let userId: string;
-        let authResult: any = null;
-        let isNewUser = false;
-
         if (existingUser) {
-            // User exists - they're trying to join another workspace
+            // User exists: Sign them in
             if (!inviteToken) {
-                return errorResponse('User already exists. Please sign in instead.', 400);
+                return errorResponse('User already exists. Please sign in.', 409);
             }
-
-            // Try to sign them in with provided credentials
             const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
                 email,
                 password,
             });
-
-            if (signInError) {
-                return errorResponse('Invalid credentials for existing user', 401);
+            if (signInError || !signInData.user || !signInData.session) {
+                return errorResponse('Invalid credentials for existing user.', 401);
             }
-
-            userId = existingUser.id;
             authResult = signInData;
         } else {
-            // New user registration
+            // New user: Sign them up
+            isNewUser = true;
             const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
                 email,
                 password,
                 options: { data: { name } },
             });
-
-            if (signUpError || !signUpData.user) {
+            if (signUpError || !signUpData.user || !signUpData.session) {
                 return errorResponse(signUpError?.message || 'Failed to create user', 400);
             }
-
-            userId = signUpData.user.id;
             authResult = signUpData;
-            isNewUser = true;
+        }
 
-            // Create user profile for new users
-            const { error: profileError } = await supabase.from('users').insert({
-                id: userId,
-                email,
-                name,
-                image: null,
+        const { user, session } = authResult;
+
+        if (inviteToken) {
+            const { data, error: rpcError } = await supabase.rpc('register_and_join_workspace', {
+                p_user_id: user.id,
+                p_user_email: email,
+                p_user_name: name,
+                p_invite_token: inviteToken,
             });
 
+            if (rpcError) {
+                // The transaction failed. If we just created the user, we should roll back the auth user.
+                if (isNewUser) {
+                    await supabase.auth.admin.deleteUser(user.id);
+                }
+                const { statusCode, message } = parseRpcError(rpcError);
+                return errorResponse(message, statusCode);
+            }
+            workspaceJoined = data;
+        } else if (isNewUser) {
+            // If it's a new user without an invite, we still need to create their public profile.
+            const { error: profileError } = await supabase.from('users').insert({ id: user.id, email, name });
             if (profileError) {
-                console.error('Profile insert error:', profileError);
-
-                // Rollback auth user creation
-                const { error: deleteError } = await supabase.auth.admin.deleteUser(userId);
-                if (deleteError) {
-                    console.error('Failed to roll back auth user:', deleteError);
-                }
-
-                return errorResponse('Failed to create user profile', 500);
+                await supabase.auth.admin.deleteUser(user.id); // Rollback
+                return errorResponse('Failed to create user profile.', 500);
             }
         }
 
-        // Handle workspace invitation if token provided
-        if (inviteData && workspaceToJoin) {
-            // Check if user is already a member of this workspace
-            const { data: existingMember, error: existingMemberError } = await supabase
-                .from('workspace_members')
-                .select('id, is_deactivated')
-                .eq('workspace_id', inviteData.workspace_id)
-                .eq('user_id', userId)
-                .single();
-
-            // Only return error if it's NOT a "no rows found" error
-            if (existingMemberError && existingMemberError.code !== 'PGRST116') {
-                console.error('Error checking existing member:', existingMemberError);
-                return errorResponse('Failed to check workspace membership', 500);
-            }
-
-            if (existingMember) {
-                if (existingMember.is_deactivated) {
-                    // Reactivate deactivated member
-                    const { error: reactivateError } = await supabase
-                        .from('workspace_members')
-                        .update({
-                            is_deactivated: false,
-                            updated_at: new Date().toISOString(),
-                        })
-                        .eq('id', existingMember.id);
-
-                    if (reactivateError) {
-                        console.error('Error reactivating member:', reactivateError);
-                        return errorResponse('Failed to reactivate workspace membership', 500);
-                    }
-                } else {
-                    return errorResponse('User is already a member of this workspace', 400);
-                }
-            } else {
-                // Add user to workspace
-                const { error: memberError } = await supabase.from('workspace_members').insert({
-                    user_id: userId,
-                    workspace_id: inviteData.workspace_id,
-                    role: 'member',
-                });
-
-                if (memberError) {
-                    console.error('Error adding workspace member:', memberError);
-
-                    // If this was a new user, rollback everything
-                    if (isNewUser) {
-                        await supabase.from('users').delete().eq('id', userId);
-                        await supabase.auth.admin.deleteUser(userId);
-                    }
-
-                    return errorResponse('Failed to join workspace', 500);
-                }
-            }
-
-            // Run in parallel to optimize (with better error handling)
-            const [userUpdateResult, tokenUpdateResult] = await Promise.allSettled([
-                supabase.from('users').update({ last_workspace_id: inviteData.workspace_id }).eq('id', userId),
-                supabase
-                    .from('workspace_invite_tokens')
-                    .update({
-                        usage_count: inviteData.usage_count + 1,
-                        updated_at: new Date().toISOString(),
-                    })
-                    .eq('id', inviteData.id),
-            ]);
-
-            // Log any failures for monitoring
-            if (userUpdateResult.status === 'rejected') {
-                console.error('Error updating user last_workspace_id:', userUpdateResult.reason);
-            }
-            if (tokenUpdateResult.status === 'rejected') {
-                console.error('Error updating token usage:', tokenUpdateResult.reason);
-            }
-        }
-
-        const isEmailConfirmed = Boolean(authResult.user?.email_confirmed_at);
+        const isEmailConfirmed = Boolean(user.email_confirmed_at);
+        const message = isNewUser
+            ? 'Registration successful. Please check your email to confirm your account.'
+            : `Successfully signed in and joined workspace "${workspaceJoined?.name}".`;
 
         const payload = {
-            user: authResult.user,
-            session: authResult.session,
-            workspace: workspaceToJoin,
+            message,
+            session: {
+                access_token: session.access_token,
+                refresh_token: session.refresh_token,
+                expires_in: session.expires_in,
+            },
+            user: {
+                id: user.id,
+                email: user.email,
+                name: user.user_metadata.name,
+                email_confirmed_at: user.email_confirmed_at,
+                created_at: user.created_at,
+            },
+            workspace: workspaceJoined,
             is_new_user: isNewUser,
             requires_email_confirmation: !isEmailConfirmed,
-            message: isNewUser
-                ? isEmailConfirmed
-                    ? workspaceToJoin
-                        ? `User created and joined workspace "${workspaceToJoin.name}" successfully`
-                        : 'User created and signed in successfully'
-                    : 'Please check your email to confirm your account'
-                : `Successfully joined workspace "${workspaceToJoin?.name}"`,
         };
 
-        return successResponse(payload, isEmailConfirmed ? 200 : 201);
-    } catch (err) {
+        return successResponse(payload, isNewUser ? 201 : 200);
+    } catch (err: any) {
         console.error('Register handler error:', err);
+        if (err instanceof z.ZodError) {
+            return errorResponse(err.errors[0].message, 400);
+        }
         return errorResponse('Internal server error', 500);
     }
 };

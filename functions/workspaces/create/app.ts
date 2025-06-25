@@ -58,7 +58,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
                 INSERT INTO channel_members (workspace_member_id, channel_id, role, notifications_enabled)
                 SELECT nm.id, nc.id, 'admin', true 
                 FROM new_member nm, new_channel nc
-                RETURNING channel_id
             )
             SELECT 
                 nw.id as workspace_id,
@@ -72,9 +71,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         const workspaceData = result.rows[0];
 
         return successResponse({
-            workspace_id: workspaceData.workspace_id,
-            channel_id: workspaceData.channel_id,
-            member_id: workspaceData.member_id,
+            id: workspaceData.workspace_id,
+            name: trimmedName,
+            role: 'admin',
+            workspaceMemberId: workspaceData.member_id,
             message: 'Workspace created successfully',
         });
     } catch (error: unknown) {

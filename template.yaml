@@ -296,6 +296,30 @@ Resources:
         EntryPoints:
           - app.ts
 
+  # GET MESSAGE REPLIES
+  GetMessageRepliesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/messages/get-message-replies
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetMessageReplies:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/messages/{messageId}/replies
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
   # Typing Indicator
   TypingIndicatorFunction:
     Type: AWS::Serverless::Function
@@ -470,6 +494,54 @@ Resources:
         EntryPoints:
           - app.ts
 
+  # ADD MEMBERS TO CHANNEL
+  AddMembersToChannelFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels/add-members
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        AddMembersToChannel:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels/{channelId}/members
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # REMOVE MEMBERS FROM CHANNEL
+  RemoveMembersFromChannelFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels/remove-members
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        RemoveMembersFromChannel:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels/{channelId}/members
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
   # GET CHANNEL MESSAGES
   GetChannelMessagesFunction:
     Type: AWS::Serverless::Function
@@ -484,6 +556,30 @@ Resources:
           Type: Api
           Properties:
             Path: /workspaces/{workspaceId}/channels/{id}/messages
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # GET CHANNEL MEMBERS
+  GetChannelMembersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels/get-members
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GetChannelMembers:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels/{channelId}/members
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -890,6 +986,9 @@ Resources:
       Runtime: nodejs20.x
       Architectures:
         - arm64
+      Environment:
+        Variables:
+          FRONTEND_URL: https://localhost:3000
       Events:
         GetInviteLink:
           Type: Api
@@ -1089,7 +1188,7 @@ Resources:
         ToggleReaction:
           Type: Api
           Properties:
-            Path: /reactions/toggle
+            Path: /workspaces/{workspaceId}/messages/{messageId}/reactions/toggle
             Method: post
             RestApiId: !Ref MainApi
     Metadata:
@@ -1222,3 +1321,73 @@ Resources:
         Target: es2022
         EntryPoints:
           - app.ts
+
+  # GENERATE PRE-SIGNED URL
+  GeneratePresignedUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/attachments/manager
+      Handler: generate-presigned-url.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        GeneratePresignedUrl:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/attachments/generate-presigned-url
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - generate-presigned-url.ts
+
+  ConfirmUploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/attachments/manager
+      Handler: confirm-upload.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        ConfirmUpload:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/attachments/{attachmentId}/confirm-upload
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - confirm-upload.ts
+
+  DeleteAttachmentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/attachments/manager
+      Handler: delete-attachment.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        DeleteAttachment:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/attachments/{attachmentId}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - delete-attachment.ts
