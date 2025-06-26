@@ -62,6 +62,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
               ON cnt.channel_id = c.id
 
             WHERE c.workspace_id = $1
+              AND c.deleted_at IS NULL
               AND (
                    c.channel_type = 'public'
                    OR cm.workspace_member_id = $2
