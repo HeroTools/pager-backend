@@ -12,7 +12,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return successResponse(null);
         }
 
-        const memberId = event.pathParameters?.id;
+        const memberId = event.pathParameters?.memberId;
         const workspaceId = event.pathParameters?.workspaceId;
 
         if (!memberId || !workspaceId) {
