@@ -1,13 +1,12 @@
 {
-  "name": "login",
+  "name": "channel-management-lambdas",
   "version": "1.0.0",
-  "description": "hello world sample for NodeJS",
-  "main": "app.ts",
-  "repository": "https://github.com/aws/aws-sam-cli-app-templates/tree/master/nodejs18.x/hello-ts-pt",
+  "description": "Channel deletion lambdas with soft delete approach",
   "author": "Zach Bresler",
   "license": "MIT",
   "dependencies": {
-    "@supabase/supabase-js": "^2.50.0"
+    "@aws-sdk/client-lambda": "^3.835.0",
+    "@supabase/supabase-js": "^2.50.2"
   },
   "scripts": {
     "unit": "jest",

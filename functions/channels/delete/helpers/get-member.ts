@@ -1,38 +1,40 @@
 import { supabase } from '../utils/supabase-client';
 
-const getChannelMember = async (channelId: string, userId: string) => {
-    // First, get the workspace ID from the channel
-    const { data: channel } = await supabase
-        .from('channels')
-        .select('workspace_id')
-        .eq('id', channelId)
-        .single();
+interface ChannelMember {
+    role: string;
+}
 
-    if (!channel) {
+export const getChannelMember = async (
+    channelId: string,
+    userId: string,
+    workspaceId: string,
+): Promise<ChannelMember | null> => {
+    try {
+        const { data: workspaceMember, error: workspaceMemberError } = await supabase
+            .from('workspace_members')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('workspace_id', workspaceId)
+            .single();
+
+        if (workspaceMemberError || !workspaceMember) {
+            return null;
+        }
+
+        const { data: member, error: memberError } = await supabase
+            .from('channel_members')
+            .select('role')
+            .eq('channel_id', channelId)
+            .eq('workspace_member_id', workspaceMember.id)
+            .single();
+
+        if (memberError || !member) {
+            return null;
+        }
+
+        return member;
+    } catch (error) {
+        console.error('Error fetching channel member:', error);
         return null;
     }
-
-    // Then, get the workspace member ID using the user ID and workspace ID
-    const { data: workspaceMember } = await supabase
-        .from('workspace_members')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('workspace_id', channel.workspace_id)
-        .single();
-
-    if (!workspaceMember) {
-        return null;
-    }
-
-    // Finally, get the channel member using the channel ID and workspace member ID
-    const { data: member } = await supabase
-        .from('channel_members')
-        .select('role')
-        .eq('channel_id', channelId)
-        .eq('workspace_member_id', workspaceMember.id)
-        .single();
-
-    return member;
 };
-
-export { getChannelMember };
