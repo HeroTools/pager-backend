@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  dex-api
+  unowned-api
 
 Parameters:
   StageName:
@@ -183,7 +183,7 @@ Resources:
         GetWorkspaceById:
           Type: Api
           Properties:
-            Path: /workspaces/{id}
+            Path: /workspaces/{workspaceId}
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -231,7 +231,7 @@ Resources:
         UpdateWorkspace:
           Type: Api
           Properties:
-            Path: /workspaces/{id}
+            Path: /workspaces/{workspaceId}
             Method: put
             RestApiId: !Ref MainApi
     Metadata:
@@ -255,7 +255,7 @@ Resources:
         DeleteWorkspace:
           Type: Api
           Properties:
-            Path: /workspaces/{id}
+            Path: /workspaces/{workspaceId}
             Method: delete
             RestApiId: !Ref MainApi
     Metadata:
@@ -387,7 +387,7 @@ Resources:
         GetMessageById:
           Type: Api
           Properties:
-            Path: /messages/{id}
+            Path: /messages/{messageId}
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -411,7 +411,7 @@ Resources:
         UpdateMessage:
           Type: Api
           Properties:
-            Path: /messages/{id}
+            Path: /messages/{messageId}
             Method: put
             RestApiId: !Ref MainApi
     Metadata:
@@ -435,7 +435,7 @@ Resources:
         DeleteMessage:
           Type: Api
           Properties:
-            Path: /messages/{id}
+            Path: /messages/{messageId}
             Method: delete
             RestApiId: !Ref MainApi
     Metadata:
@@ -459,7 +459,7 @@ Resources:
         GetAllAvailableChannels:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/channels/all-available
+            Path: /workspaces/{workspaceId}/channels/discover/available
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -483,7 +483,7 @@ Resources:
         GetUserChannels:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/user/channels
+            Path: /workspaces/{workspaceId}/members/me/channels
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -555,7 +555,7 @@ Resources:
         GetChannelMessages:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/channels/{id}/messages
+            Path: /workspaces/{workspaceId}/channels/{channelId}/messages
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -627,7 +627,7 @@ Resources:
         GetChannelById:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/channels/{id}
+            Path: /workspaces/{workspaceId}/channels/{channelId}
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -651,7 +651,7 @@ Resources:
         UpdateChannel:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/channels/{id}
+            Path: /workspaces/{workspaceId}/channels/{channelId}
             Method: put
             RestApiId: !Ref MainApi
     Metadata:
@@ -667,15 +667,28 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: functions/channels/delete
-      Handler: app.handler
+      Handler: delete-channel.handler
       Runtime: nodejs20.x
       Architectures:
         - arm64
+      Environment:
+        Variables:
+          MESSAGE_CLEANUP_FUNCTION_ARN: !GetAtt MessageCleanupFunction.Arn
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: "2012-10-17"
+          Statement:
+            Effect: Allow
+            Action:
+              - lambda:InvokeFunctionUrl
+              - lambda:InvokeFunction
+              - lambda:InvokeAsync
+            Resource: !Sub arn:aws:lambda:*:${AWS::AccountId}:function:*
       Events:
         DeleteChannel:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/channels/{id}
+            Path: /workspaces/{workspaceId}/channels/{channelId}
             Method: delete
             RestApiId: !Ref MainApi
     Metadata:
@@ -684,7 +697,25 @@ Resources:
         Minify: true
         Target: es2022
         EntryPoints:
-          - app.ts
+          - delete-channel.ts
+
+  # MESSAGE CLEANUP - Background job only (no API)
+  MessageCleanupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels/delete
+      Handler: message-cleanup.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Timeout: 900 # 15 minutes for large channels
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - message-cleanup.ts
 
   # CREATE OR GET CONVERSATION
   CreateOrGetConversationFunction:
@@ -747,7 +778,7 @@ Resources:
         GetConversationById:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/conversations/{id}
+            Path: /workspaces/{workspaceId}/conversations/{conversationId}
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -771,7 +802,7 @@ Resources:
         GetConversationMessages:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/conversations/{id}/messages
+            Path: /workspaces/{workspaceId}/conversations/{conversationId}/messages
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -795,7 +826,7 @@ Resources:
         DeleteConversation:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/conversations/{id}
+            Path: /workspaces/{workspaceId}/conversations/{conversationId}
             Method: delete
             RestApiId: !Ref MainApi
     Metadata:
@@ -819,7 +850,7 @@ Resources:
         GetCurrentMember:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/members/current
+            Path: /workspaces/{workspaceId}/members/me/current
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -867,7 +898,7 @@ Resources:
         GetMemberById:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/members/{id}
+            Path: /workspaces/{workspaceId}/members/{memberId}
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
@@ -891,7 +922,7 @@ Resources:
         UpdateMember:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/members/{id}
+            Path: /workspaces/{workspaceId}/members/{memberId}
             Method: put
             RestApiId: !Ref MainApi
     Metadata:
@@ -915,7 +946,7 @@ Resources:
         RemoveMember:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/members/{id}
+            Path: /workspaces/{workspaceId}/members/{memberId}
             Method: delete
             RestApiId: !Ref MainApi
     Metadata:
@@ -1236,7 +1267,7 @@ Resources:
         RemoveReaction:
           Type: Api
           Properties:
-            Path: /reactions/{id}
+            Path: /reactions/{reactionId}
             Method: delete
             RestApiId: !Ref MainApi
     Metadata:
@@ -1335,7 +1366,7 @@ Resources:
         GeneratePresignedUrl:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/attachments/generate-presigned-url
+            Path: /workspaces/{workspaceId}/attachments/generate/presigned-url
             Method: post
             RestApiId: !Ref MainApi
     Metadata:
@@ -1358,7 +1389,7 @@ Resources:
         ConfirmUpload:
           Type: Api
           Properties:
-            Path: /workspaces/{workspaceId}/attachments/{attachmentId}/confirm-upload
+            Path: /workspaces/{workspaceId}/attachments/{attachmentId}/confirm
             Method: post
             RestApiId: !Ref MainApi
     Metadata:
