@@ -13,7 +13,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Unauthorized', 401);
         }
 
-        const messageId = event.pathParameters?.id;
+        const messageId = event.pathParameters?.messageId;
 
         if (!messageId) {
             return errorResponse('Message ID is required', 400);
