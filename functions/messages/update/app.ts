@@ -12,7 +12,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Unauthorized', 401);
         }
 
-        const messageId = event.pathParameters?.id;
+        const messageId = event.pathParameters?.messageId;
         const { body } = JSON.parse(event.body || '{}');
 
         if (!messageId) {
