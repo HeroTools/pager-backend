@@ -11,7 +11,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Unauthorized', 401);
         }
 
-        const workspaceId = event.pathParameters?.id;
+        const workspaceId = event.pathParameters?.workspaceId;
         const includeDetails = event.queryStringParameters?.include_details === 'true';
 
         if (!workspaceId) {
