@@ -49,6 +49,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             )
             .eq('workspace_id', workspaceId)
             .eq('channel_members.workspace_member_id', member.id)
+            .is('deleted_at', null)
             .order('created_at', { ascending: true });
 
         if (error) {
