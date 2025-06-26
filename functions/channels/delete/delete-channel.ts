@@ -22,20 +22,18 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Channel ID and workspace ID are required', 400);
         }
 
-        // Get channel and validate it belongs to the specified workspace
         const { data: channel, error: channelError } = await supabase
             .from('channels')
             .select('id, workspace_id')
             .eq('id', channelId)
             .eq('workspace_id', workspaceId)
-            .is('deleted_at', null) // Only get non-deleted channels
+            .is('deleted_at', null)
             .single();
 
         if (channelError || !channel) {
             return errorResponse('Channel not found or access denied', 404);
         }
 
-        // Check if user is an admin of the channel
         const channelMember = await getChannelMember(channelId, userId, workspaceId);
 
         if (!channelMember || channelMember.role !== 'admin') {

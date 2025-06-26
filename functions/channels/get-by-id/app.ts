@@ -47,7 +47,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         }
 
         // Get channel
-        const { data: channel, error } = await supabase.from('channels').select('*').eq('id', channelId).single();
+        const { data: channel, error } = await supabase
+            .from('channels')
+            .select('*')
+            .eq('id', channelId)
+            .is('deleted_at', null)
+            .single();
 
         if (error || !channel) {
             return errorResponse('Channel not found', 404);
