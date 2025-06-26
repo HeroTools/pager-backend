@@ -7,7 +7,7 @@ import { successResponse, errorResponse } from './utils/response';
 
 // Validation schemas
 const PathParamsSchema = z.object({
-    id: z.string().uuid(),
+    channelId: z.string().uuid(),
     workspaceId: z.string().uuid(),
 });
 
@@ -28,7 +28,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         // 1) Validate
         const pathParams = PathParamsSchema.parse(event.pathParameters);
         const queryParams = QueryParamsSchema.parse(event.queryStringParameters || {});
-        const { id: channelId, workspaceId } = pathParams;
+        const { channelId, workspaceId } = pathParams;
         const { limit, cursor, before, include_members, include_reactions, include_attachments, include_count } =
             queryParams;
 

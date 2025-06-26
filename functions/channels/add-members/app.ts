@@ -65,7 +65,9 @@ const getChannelInfoAndValidateAccess = async (
 
     const row = result.rows[0];
 
-    if (!row.requesting_user_role) {
+    // For private channels, user must be a member to add others
+    // For public channels, any workspace member can add members
+    if (row.channel_type === PRIVATE_CHANNEL_TYPE && !row.requesting_user_role) {
         throw ChannelError.notMember();
     }
 
