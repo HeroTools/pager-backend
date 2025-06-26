@@ -4,11 +4,10 @@ import { z } from 'zod';
 import dbPool from './utils/create-db-pool';
 import { getUserIdFromToken } from './helpers/auth';
 import { successResponse, errorResponse } from './utils/response';
-import { ConversationData, MessageWithUser, ConversationMemberWithUser } from './types';
+import { MessageWithUser, ConversationMemberWithUser } from './types';
 
-// Validation schemas
 const PathParamsSchema = z.object({
-    id: z.string().uuid(),
+    conversationId: z.string().uuid(),
     workspaceId: z.string().uuid(),
 });
 
@@ -28,7 +27,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         // Parse and validate
         const pathParams = PathParamsSchema.parse(event.pathParameters);
         const queryParams = QueryParamsSchema.parse(event.queryStringParameters || {});
-        const { id: conversationId, workspaceId } = pathParams;
+        const { conversationId, workspaceId } = pathParams;
         const { limit, cursor, before, include_members, include_reactions, include_attachments, include_count } =
             queryParams;
 
