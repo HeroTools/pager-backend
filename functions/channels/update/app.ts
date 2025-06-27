@@ -15,14 +15,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         const channelId = event.pathParameters?.channelId;
         const workspaceId = event.pathParameters?.workspaceId;
-        const { name, channel_type } = JSON.parse(event.body || '{}');
+        const { name, channel_type, description } = JSON.parse(event.body || '{}');
 
         if (!channelId || !workspaceId) {
             return errorResponse('Channel ID and workspace ID are required', 400);
         }
 
-        if (!name && !channel_type) {
-            return errorResponse('At least one field (name or channel_type) is required', 400);
+        if (!name && !channel_type && description === undefined) {
+            return errorResponse('At least one field (name, channel_type, or description) is required', 400);
         }
 
         // Validate channel_type if provided
@@ -54,6 +54,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         if (channel_type) {
             updateData.channel_type = channel_type;
+        }
+
+        if (description !== undefined) {
+            updateData.description = description;
         }
 
         // Update channel
