@@ -652,7 +652,7 @@ Resources:
           Type: Api
           Properties:
             Path: /workspaces/{workspaceId}/channels/{channelId}
-            Method: put
+            Method: patch
             RestApiId: !Ref MainApi
     Metadata:
       BuildMethod: esbuild
