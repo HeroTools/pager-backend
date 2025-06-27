@@ -7,15 +7,10 @@ import { parseChannelName } from './helpers/parse-channel-name';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     const origin = event.headers.Origin || event.headers.origin;
-    const corsHeaders = setCorsHeaders(origin, 'PATCH,OPTIONS');
+    const corsHeaders = setCorsHeaders(origin, 'PATCH');
 
-    // Handle preflight
     if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 204,
-            headers: corsHeaders,
-            body: '',
-        };
+        return successResponse({ message: 'OK' }, 200, corsHeaders);
     }
 
     try {
