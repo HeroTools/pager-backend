@@ -15,14 +15,19 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         const channelId = event.pathParameters?.channelId;
         const workspaceId = event.pathParameters?.workspaceId;
-        const { name } = JSON.parse(event.body || '{}');
+        const { name, channel_type } = JSON.parse(event.body || '{}');
 
         if (!channelId || !workspaceId) {
             return errorResponse('Channel ID and workspace ID are required', 400);
         }
 
-        if (!name) {
-            return errorResponse('Name is required', 400);
+        if (!name && !channel_type) {
+            return errorResponse('At least one field (name or channel_type) is required', 400);
+        }
+
+        // Validate channel_type if provided
+        if (channel_type && !['public', 'private'].includes(channel_type)) {
+            return errorResponse('Channel type must be either "public" or "private"', 400);
         }
 
         const workspaceMember = await getWorkspaceMember(workspaceId, userId);
@@ -37,15 +42,24 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Admin access required', 403);
         }
 
-        const parsedName = parseChannelName(name);
+        // Prepare update object with only provided fields
+        const updateData: any = {
+            updated_at: new Date().toISOString(),
+        };
+
+        if (name) {
+            const parsedName = parseChannelName(name);
+            updateData.name = parsedName;
+        }
+
+        if (channel_type) {
+            updateData.channel_type = channel_type;
+        }
 
         // Update channel
         const { error } = await supabase
             .from('channels')
-            .update({
-                name: parsedName,
-                updated_at: new Date().toISOString(),
-            })
+            .update(updateData)
             .eq('id', channelId);
 
         if (error) {
