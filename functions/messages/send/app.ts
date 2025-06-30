@@ -3,9 +3,11 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
 import dbPool from './utils/create-db-pool';
 import { getUserIdFromToken } from './helpers/auth';
-import { errorResponse, successResponse } from './utils/response';
+import { errorResponse, setCorsHeaders, successResponse } from './utils/response';
 import { broadcastMessage, broadcastTypingStatus } from './helpers/broadcasting';
 import { CompleteMessage } from './type';
+import { invokeLambdaFunction } from './helpers/invoke-lambda';
+import { LambdaClient } from '@aws-sdk/client-lambda';
 
 const SendMessageSchema = z
     .object({
@@ -37,7 +39,16 @@ const PathParamsSchema = z
         message: 'Either channelId or conversationId is required',
     });
 
+const lambdaClient = new LambdaClient({ region: 'us-east-2' });
+
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    const origin = event.headers.Origin || event.headers.origin;
+    const corsHeaders = setCorsHeaders(origin, 'POST');
+
+    if (event.httpMethod === 'OPTIONS') {
+        return successResponse({ message: 'OK' }, 200, corsHeaders);
+    }
+
     let client: PoolClient | null = null;
 
     try {
@@ -46,6 +57,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse(
                 `Invalid parameters: ${pathParamsResult.error.errors.map((e) => e.message).join(', ')}`,
                 400,
+                corsHeaders,
             );
         }
         const { workspaceId, channelId, conversationId } = pathParamsResult.data;
@@ -56,13 +68,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse(
                 `Invalid request: ${requestBodyResult.error.errors.map((e) => e.message).join(', ')}`,
                 400,
+                corsHeaders,
             );
         }
         const { body, attachment_ids, parent_message_id, thread_id, message_type } = requestBodyResult.data;
 
         const userId = await getUserIdFromToken(event.headers.Authorization);
         if (!userId) {
-            return errorResponse('Unauthorized', 401);
+            return errorResponse('Unauthorized', 401, corsHeaders);
         }
 
         client = await dbPool.connect();
@@ -77,7 +90,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         if (memberRows.length === 0) {
             await client.query('ROLLBACK');
-            return errorResponse('Not a member of this workspace', 403);
+            return errorResponse('Not a member of this workspace', 403, corsHeaders);
         }
 
         const workspaceMember = memberRows[0];
@@ -103,13 +116,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             accessParams = [conversationId, workspaceMember.id];
         } else {
             await client.query('ROLLBACK');
-            return errorResponse('Either channel ID or conversation ID is required', 400);
+            return errorResponse('Either channel ID or conversation ID is required', 400, corsHeaders);
         }
 
         const { rows: accessRows } = await client.query(accessQuery, accessParams);
         if (accessRows.length === 0) {
             await client.query('ROLLBACK');
-            return errorResponse('Access denied', 403);
+            return errorResponse('Access denied', 403, corsHeaders);
         }
 
         if (attachment_ids.length > 0) {
@@ -121,7 +134,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
             if (attachmentRows.length !== attachment_ids.length) {
                 await client.query('ROLLBACK');
-                return errorResponse('One or more attachments are invalid', 400);
+                return errorResponse('One or more attachments are invalid', 400, corsHeaders);
             }
         }
 
@@ -136,7 +149,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
             if (parentRows.length === 0) {
                 await client.query('ROLLBACK');
-                return errorResponse('Parent message not found', 404);
+                return errorResponse('Parent message not found', 404, corsHeaders);
             }
 
             const parentMessage = parentRows[0];
@@ -144,11 +157,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             // Verify parent message belongs to same channel/conversation
             if (channelId && parentMessage.channel_id !== channelId) {
                 await client.query('ROLLBACK');
-                return errorResponse('Parent message is not in this channel', 400);
+                return errorResponse('Parent message is not in this channel', 400, corsHeaders);
             }
             if (conversationId && parentMessage.conversation_id !== conversationId) {
                 await client.query('ROLLBACK');
-                return errorResponse('Parent message is not in this conversation', 400);
+                return errorResponse('Parent message is not in this conversation', 400, corsHeaders);
             }
 
             finalThreadId = parentMessage.thread_id || parent_message_id;
@@ -182,7 +195,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         if (messageRows.length === 0) {
             await client.query('ROLLBACK');
-            return errorResponse('Failed to create message', 500);
+            return errorResponse('Failed to create message', 500, corsHeaders);
         }
 
         // Insert message attachments if any
@@ -246,7 +259,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         if (completeRows.length === 0) {
             await client.query('ROLLBACK');
-            return errorResponse('Failed to fetch created message', 500);
+            return errorResponse('Failed to fetch created message', 500, corsHeaders);
         }
 
         const completeMessage: CompleteMessage = completeRows[0];
@@ -277,13 +290,34 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             reactions: [],
         };
 
-        await broadcastMessage(transformedMessage, channelId, conversationId);
+        const notificationPayload = {
+            messageId: completeMessage.id,
+            senderWorkspaceMemberId: workspaceMember.id,
+            workspaceId: workspaceId,
+            channelId: channelId || undefined,
+            conversationId: conversationId || undefined,
+            messageBody: completeMessage.body,
+            parentMessageId: completeMessage.parent_message_id || undefined,
+            threadId: completeMessage.thread_id || undefined,
+            senderName: completeMessage.user_name,
+        };
+
+        console.log('notificationPayload:', notificationPayload);
+
+        await Promise.all([
+            broadcastMessage(transformedMessage, channelId, conversationId),
+            invokeLambdaFunction(
+                process.env.NOTIFICATION_SERVICE_FUNCTION_ARN as string,
+                notificationPayload,
+                lambdaClient,
+            ),
+        ]);
 
         console.log(
             `Message sent with ${attachment_ids.length} attachments to ${channelId ? 'channel' : 'conversation'}`,
         );
 
-        return successResponse(transformedMessage);
+        return successResponse(transformedMessage, 201, corsHeaders);
     } catch (error) {
         if (client) {
             try {
@@ -296,14 +330,18 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         console.error('Error creating message:', error);
 
         if (error instanceof z.ZodError) {
-            return errorResponse(`Validation error: ${error.errors.map((e) => e.message).join(', ')}`, 400);
+            return errorResponse(
+                `Validation error: ${error.errors.map((e) => e.message).join(', ')}`,
+                400,
+                corsHeaders,
+            );
         }
 
         if (error instanceof SyntaxError) {
-            return errorResponse('Invalid JSON in request body', 400);
+            return errorResponse('Invalid JSON in request body', 400, corsHeaders);
         }
 
-        return errorResponse('Internal server error', 500);
+        return errorResponse('Internal server error', 500, corsHeaders);
     } finally {
         if (client) {
             try {
