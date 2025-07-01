@@ -26,7 +26,7 @@ async function processMessageNotifications(event: NotificationEvent): Promise<vo
             workspaceId,
             channelId,
             conversationId,
-            messageBody,
+            messageText,
             parentMessageId,
             threadId,
             senderName,
@@ -42,14 +42,14 @@ async function processMessageNotifications(event: NotificationEvent): Promise<vo
                 senderWorkspaceMemberId,
                 workspaceId,
                 messageId,
-                messageBody,
+                messageText,
                 senderName,
             );
             notifications.push(...channelNotifications);
         }
 
         // 2. Handle mentions (for additional context in notifications)
-        const mentionedUserIds = await extractAndResolveMentions(client, messageBody, workspaceId);
+        const mentionedUserIds = await extractAndResolveMentions(client, messageText, workspaceId);
         if (mentionedUserIds.length > 0) {
             const mentionNotifications = await createMentionNotifications(
                 client,
@@ -57,7 +57,7 @@ async function processMessageNotifications(event: NotificationEvent): Promise<vo
                 senderWorkspaceMemberId,
                 workspaceId,
                 messageId,
-                messageBody,
+                messageText,
                 senderName,
                 channelId,
                 conversationId,
@@ -74,7 +74,7 @@ async function processMessageNotifications(event: NotificationEvent): Promise<vo
                 senderWorkspaceMemberId,
                 workspaceId,
                 messageId,
-                messageBody,
+                messageText,
                 senderName,
                 notifications,
             );
@@ -90,7 +90,7 @@ async function processMessageNotifications(event: NotificationEvent): Promise<vo
                 senderWorkspaceMemberId,
                 workspaceId,
                 messageId,
-                messageBody,
+                messageText,
                 senderName,
                 channelId,
                 conversationId,
