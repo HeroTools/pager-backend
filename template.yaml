@@ -1233,6 +1233,30 @@ Resources:
         EntryPoints:
           - app.ts
 
+  # UPDATE USER PREFERENCES
+  UpdateUserPreferencesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth/update-user-preferences
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        UpdateUserPreferences:
+          Type: Api
+          Properties:
+            Path: /auth/user-preferences
+            Method: patch
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
   # RESET PASSWORD REQUEST
   ResetPasswordRequestFunction:
     Type: AWS::Serverless::Function
