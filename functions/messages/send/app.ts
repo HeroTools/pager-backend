@@ -5,14 +5,16 @@ import dbPool from './utils/create-db-pool';
 import { getUserIdFromToken } from './helpers/auth';
 import { errorResponse, setCorsHeaders, successResponse } from './utils/response';
 import { broadcastMessage, broadcastTypingStatus } from './helpers/broadcasting';
-import { CompleteMessage } from './type';
+import { CompleteMessage } from './types';
 import { invokeLambdaFunction } from './helpers/invoke-lambda';
 import { LambdaClient } from '@aws-sdk/client-lambda';
+import { deltaToMarkdown, deltaToPlainText } from './helpers/quill-delta-converters';
 
 const SendMessageSchema = z
     .object({
         body: z.string().optional(),
-        attachment_ids: z.array(z.string().uuid()).max(10).default([]), // Limit to 10 attachments
+        plain_text: z.string().optional(),
+        attachment_ids: z.array(z.string().uuid()).max(10).default([]),
         parent_message_id: z.string().uuid().optional(),
         thread_id: z.string().uuid().optional(),
         message_type: z.enum(['direct', 'thread', 'system', 'bot']).default('direct'),
@@ -20,14 +22,7 @@ const SendMessageSchema = z
     .refine((data) => (data.body && data.body.trim().length > 0) || data.attachment_ids.length > 0, {
         message: 'Either message body or attachments are required',
         path: ['body'],
-    })
-    .refine(
-        (data) => !data.body || data.body.trim().length <= 4000, // Message length limit
-        {
-            message: 'Message body cannot exceed 4000 characters',
-            path: ['body'],
-        },
-    );
+    });
 
 const PathParamsSchema = z
     .object({
@@ -72,6 +67,19 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             );
         }
         const { body, attachment_ids, parent_message_id, thread_id, message_type } = requestBodyResult.data;
+
+        let deltaOps = null;
+        let messageText = '';
+
+        if (body) {
+            try {
+                const parsed = JSON.parse(body);
+                deltaOps = parsed.ops;
+                messageText = deltaToMarkdown(deltaOps);
+            } catch (error) {
+                return errorResponse('Invalid message format', 400, corsHeaders);
+            }
+        }
 
         const userId = await getUserIdFromToken(event.headers.Authorization);
         if (!userId) {
@@ -154,7 +162,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
             const parentMessage = parentRows[0];
 
-            // Verify parent message belongs to same channel/conversation
             if (channelId && parentMessage.channel_id !== channelId) {
                 await client.query('ROLLBACK');
                 return errorResponse('Parent message is not in this channel', 400, corsHeaders);
@@ -167,23 +174,22 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             finalThreadId = parentMessage.thread_id || parent_message_id;
         }
 
-        // Stop typing notification
         await broadcastTypingStatus(userId, channelId, conversationId, false);
 
         const messageId = crypto.randomUUID();
 
-        // Insert message
         const insertMessageQuery = `
             INSERT INTO messages (
-                id, body, workspace_member_id, workspace_id, channel_id, 
+                id, body, text, workspace_member_id, workspace_id, channel_id, 
                 conversation_id, parent_message_id, thread_id, message_type, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
             RETURNING id, created_at
         `;
 
         const { rows: messageRows } = await client.query(insertMessageQuery, [
             messageId,
             body?.trim() || '',
+            messageText,
             workspaceMember.id,
             workspaceId,
             channelId || null,
@@ -198,7 +204,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Failed to create message', 500, corsHeaders);
         }
 
-        // Insert message attachments if any
         if (attachment_ids.length > 0) {
             const values: string[] = [];
             const params: any[] = [];
@@ -226,7 +231,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         const completeMessageQuery = `
             SELECT 
-                m.id, m.body, m.workspace_member_id, m.workspace_id, m.channel_id,
+                m.id, m.body, m.text, m.workspace_member_id, m.workspace_id, m.channel_id,
                 m.conversation_id, m.parent_message_id, m.thread_id, m.message_type,
                 m.created_at, m.updated_at, m.edited_at, m.deleted_at,
                 u.id as user_id, u.name as user_name, u.email as user_email, u.image as user_image,
@@ -269,6 +274,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         const transformedMessage = {
             id: completeMessage.id,
             body: completeMessage.body,
+            text: completeMessage.text,
             workspace_member_id: completeMessage.workspace_member_id,
             workspace_id: completeMessage.workspace_id,
             channel_id: completeMessage.channel_id,
@@ -296,7 +302,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             workspaceId: workspaceId,
             channelId: channelId || undefined,
             conversationId: conversationId || undefined,
-            messageBody: completeMessage.body,
+            messageText: requestBodyResult.data.plain_text || deltaToPlainText(deltaOps),
             parentMessageId: completeMessage.parent_message_id || undefined,
             threadId: completeMessage.thread_id || undefined,
             senderName: completeMessage.user_name,
