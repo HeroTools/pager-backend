@@ -178,7 +178,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         const messageId = crypto.randomUUID();
 
-        // Updated insert query to include text column
         const insertMessageQuery = `
             INSERT INTO messages (
                 id, body, text, workspace_member_id, workspace_id, channel_id, 
@@ -230,7 +229,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             await client.query(updateStatusQuery, [attachment_ids]);
         }
 
-        // Updated query to include text field
         const completeMessageQuery = `
             SELECT 
                 m.id, m.body, m.text, m.workspace_member_id, m.workspace_id, m.channel_id,
