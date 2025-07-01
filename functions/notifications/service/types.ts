@@ -25,7 +25,7 @@ export interface NotificationEvent {
     workspaceId: string;
     channelId?: string;
     conversationId?: string;
-    messageBody: string;
+    messageText: string;
     parentMessageId?: string;
     threadId?: string;
     senderName: string;
