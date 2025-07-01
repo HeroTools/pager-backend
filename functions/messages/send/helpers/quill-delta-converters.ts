@@ -1,6 +1,3 @@
-// deltaToMarkdown.ts
-
-// --- URL helper -------------------------------------------------------------
 function encodeLink(link: string): string {
     try {
         const url = new URL(link);
@@ -11,7 +8,6 @@ function encodeLink(link: string): string {
     }
 }
 
-// --- Tree model -------------------------------------------------------------
 class Node {
     public open: string;
     public close: string;
@@ -60,7 +56,6 @@ class Node {
     }
 }
 
-// --- Converters -------------------------------------------------------------
 interface Converters {
     embed: Record<string, (this: Node, src: any, attrs?: any) => void>;
     inline: Record<string, (value?: any) => [string, string]>;
@@ -117,7 +112,6 @@ const defaultConverters: Converters = {
     },
 };
 
-// --- Core conversion --------------------------------------------------------
 interface QuillOp {
     insert?: string | Record<string, any>;
     attributes?: Record<string, any>;
@@ -144,7 +138,6 @@ function convert(ops: QuillOp[], converters: Converters): Node {
     for (let i = 0; i < ops.length; i++) {
         const op = ops[i];
 
-        // Embeds
         if (op.insert && typeof op.insert === 'object') {
             for (const key in op.insert) {
                 if (converters.embed[key]) {
@@ -155,12 +148,10 @@ function convert(ops: QuillOp[], converters: Converters): Node {
             continue;
         }
 
-        // Text
         if (typeof op.insert === 'string') {
             const lines = op.insert.split('\n');
             const attrs = op.attributes || {};
 
-            // Block-level?
             if (Object.keys(attrs).some((k) => converters.block[k])) {
                 for (let j = 1; j < lines.length; j++) {
                     for (const attr in attrs) {
@@ -187,7 +178,6 @@ function convert(ops: QuillOp[], converters: Converters): Node {
                 }
                 beginningOfLine = true;
             } else {
-                // Inline + line wraps
                 for (let l = 0; l < lines.length; l++) {
                     if ((l > 0 || beginningOfLine) && group && ++group.distance >= 2) {
                         group = null;
@@ -237,7 +227,6 @@ function convert(ops: QuillOp[], converters: Converters): Node {
     }
 }
 
-// --- Plain-text helper ------------------------------------------------------
 export function deltaToPlainText(delta: string | { ops: QuillOp[] }): string {
     let ops: QuillOp[];
     if (typeof delta === 'string') {
