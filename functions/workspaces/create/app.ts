@@ -50,8 +50,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
                 RETURNING id, workspace_id
             ),
             new_channel AS (
-                INSERT INTO channels (name, workspace_id, channel_type, description)
-                SELECT 'general', workspace_id, 'public', 'General discussion channel' FROM new_member
+                INSERT INTO channels (name, workspace_id, channel_type, description, is_default)
+                SELECT 'general', workspace_id, 'public', 'This is the one channel that will always include everyone. It's a great place for announcements and team-wide conversations.', true FROM new_member
                 RETURNING id, workspace_id
             ),
             channel_membership AS (
