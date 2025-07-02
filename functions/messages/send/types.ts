@@ -1,6 +1,7 @@
 export interface CompleteMessage {
     id: string;
     body: string;
+    text: string;
     workspace_member_id: string;
     workspace_id: string;
     channel_id: string | null;
