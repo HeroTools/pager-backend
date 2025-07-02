@@ -1,54 +1,66 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getUserIdFromToken } from './helpers/auth';
 import { supabase } from './utils/supabase-client';
-import { errorResponse, successResponse } from './utils/response';
+import { setCorsHeaders, errorResponse, successResponse } from './utils/response';
 import { getMember } from './helpers/get-member';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    const origin = event.headers.Origin || event.headers.origin;
+    const corsHeaders = setCorsHeaders(origin, 'PUT');
+
+    if (event.httpMethod === 'OPTIONS') {
+        return successResponse({ message: 'OK' }, 200, corsHeaders);
+    }
+
     try {
         const userId = await getUserIdFromToken(event.headers.Authorization);
 
         if (!userId) {
-            return errorResponse('Unauthorized', 401);
+            return errorResponse('Unauthorized', 401, corsHeaders);
         }
 
         const messageId = event.pathParameters?.messageId;
         const { body } = JSON.parse(event.body || '{}');
 
         if (!messageId) {
-            return errorResponse('Message ID is required', 400);
+            return errorResponse('Message ID is required', 400, corsHeaders);
         }
 
         if (!body) {
-            return errorResponse('Body is required', 400);
+            return errorResponse('Body is required', 400, corsHeaders);
         }
 
-        // Get message and verify ownership
-        const { data: message } = await supabase
+        // Get message and verify it exists and is not deleted
+        const { data: message, error: messageError } = await supabase
             .from('messages')
-            .select(
-                `
-          *,
-          members!inner(user_id)
-        `,
-            )
+            .select(`
+                *,
+                workspace_members!inner(user_id)
+            `)
             .eq('id', messageId)
+            .is('deleted_at', null)
             .single();
 
-        if (!message) {
-            return errorResponse('Message not found', 404);
+        if (messageError || !message) {
+            return errorResponse('Message not found', 404, corsHeaders);
         }
 
         const member = await getMember(message.workspace_id, userId);
 
-        if (!member || member.id !== message.member_id) {
-            return errorResponse('Can only edit your own messages', 403);
+        if (!member) {
+            return errorResponse('Not a member of this workspace', 403, corsHeaders);
+        }
+
+        // Verify ownership - compare workspace member IDs
+        if (member.id !== message.workspace_member_id) {
+            return errorResponse('Can only edit your own messages', 403, corsHeaders);
         }
 
         const { error } = await supabase
             .from('messages')
             .update({
                 body,
+                edited_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
             })
             .eq('id', messageId);
@@ -57,9 +69,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             throw error;
         }
 
-        return successResponse({ messageId });
+        return successResponse({ messageId }, 200, corsHeaders);
     } catch (error) {
         console.error('Error updating message:', error);
-        return errorResponse('Internal server error', 500);
+        return errorResponse('Internal server error', 500, corsHeaders);
     }
 };
