@@ -3,7 +3,6 @@ import OpenAI from 'openai';
 import { supabase } from './utils/supabase-client';
 import { successResponse } from './utils/response';
 
-// ENV helper: validate and parse environment variables
 function getEnv<T>(key: string, parser: (v: string) => T, defaultValue?: T): T {
     const raw = process.env[key];
     if (raw == null) {
@@ -22,7 +21,6 @@ const EMBEDDING_MODEL = getEnv('EMBEDDING_MODEL', (v) => v, 'text-embedding-3-sm
 const MODEL_MAX_TOKENS = getEnv('MODEL_MAX_TOKENS', (v) => parseInt(v, 10), 8191);
 const SIMILARITY_THRESHOLD = getEnv('SIMILARITY_THRESHOLD', parseFloat, 0.7);
 const CONTEXT_TIME_WINDOW_HOURS = getEnv('CONTEXT_TIME_WINDOW_HOURS', (v) => parseInt(v, 10), 48);
-const BATCH_SIZE = getEnv('BATCH_SIZE', (v) => parseInt(v, 10), 100);
 
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
@@ -43,45 +41,57 @@ interface SQSMessageBody {
     workspaceId: string;
     channelId: string | null;
     conversationId: string | null;
-    createdAt: string; // ISO string
+    parentMessageId: string | null;
+    createdAt: string;
     body: string;
     text: string | null;
+}
+
+interface MessageDetail {
+    id: string;
+    text: string;
+    body: string;
+    created_at: string;
+    parent_message_id: string | null;
+}
+
+interface ThreadContext {
+    parentMessage?: MessageDetail;
+    allThreadMessages: MessageDetail[];
+    threadSummary: string;
 }
 
 export const handler: SQSHandler = async (event: SQSEvent) => {
     console.log(`🛎️ Received ${event.Records.length} SQS messages`);
 
-    // 1. Parse bodies
     const messages = event.Records.map((r) => JSON.parse(r.body) as SQSMessageBody);
 
-    // 2. Prepare and truncate content
-    // const inputs = messages.map((m) => {
-    //     const raw = (m.text || m.body).trim();
-    //     let tokens = tokenizer.encode(raw);
-    //     if (tokens.length > MODEL_MAX_TOKENS) {
-    //         tokens = tokens.slice(0, MODEL_MAX_TOKENS);
-    //     }
-    //     return tokenizer.decode(tokens);
-    // });
+    const threadContextMap = await buildThreadContextMap(messages);
 
-    const inputs = messages.map((m) => {
-        const raw = (m.text || m.body).trim();
-        return truncateToTokenLimit(raw, MODEL_MAX_TOKENS);
+    const enrichedInputs = messages.map((msg) => {
+        const content = (msg.text || msg.body).trim();
+        const threadContext = threadContextMap.get(msg.parentMessageId || msg.messageId);
+        const enrichedContent = enrichContentWithThreadContext(content, threadContext);
+        return truncateToTokenLimit(enrichedContent, MODEL_MAX_TOKENS);
     });
 
-    // 3. Batch‐call OpenAI embeddings
     const embedResponse = await openai.embeddings.create({
         model: EMBEDDING_MODEL,
-        input: inputs,
+        input: enrichedInputs,
         encoding_format: 'float',
         dimensions: 1536,
     });
-    const embeddings = embedResponse.data.map((d) => d.embedding);
 
-    // 4. Process all records in parallel
-    const results = await Promise.allSettled(messages.map((msg, i) => processOne(msg, embeddings[i])));
+    const results = await Promise.allSettled(
+        messages.map((msg, i) =>
+            processOne(
+                msg,
+                embedResponse.data[i].embedding,
+                threadContextMap.get(msg.parentMessageId || msg.messageId),
+            ),
+        ),
+    );
 
-    // 5. Tally and rethrow on failure so SQS can retry / DLQ
     const failed = results.filter((r) => r.status === 'rejected');
     if (failed.length) {
         const errs = failed.map((r: any) => r.reason.message).join('; ');
@@ -89,72 +99,192 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
         throw new Error(`${failed.length} message(s) failed`);
     }
 
+    const successfulResults = results.filter((r) => r.status === 'fulfilled') as PromiseFulfilledResult<any>[];
+    const processedMessageIds = successfulResults.map((r) => r.value.messageId);
+    const totalTokens = successfulResults.reduce((sum, r) => sum + r.value.tokenCount, 0);
+    const workspaceId = messages[0].workspaceId;
+
+    await Promise.allSettled([
+        batchUpdateMessagesProcessed(processedMessageIds),
+        updateWorkspaceUsage(workspaceId, successfulResults.length, totalTokens),
+    ]);
+
     console.log(`✅ Successfully processed ${messages.length} messages`);
     return successResponse({ message: 'Successfully processed messages' }, 200);
 };
 
-async function processOne(msg: SQSMessageBody, embedding: number[]) {
-    const { messageId, workspaceId, channelId, conversationId, createdAt } = msg;
+async function buildThreadContextMap(messages: SQSMessageBody[]): Promise<Map<string, ThreadContext>> {
+    const contextMap = new Map<string, ThreadContext>();
+    const currentBatchMessageIds = new Set(messages.map((m) => m.messageId));
 
-    // --- 1. Semantic context via Postgres RPC (hnsw index) ---
+    // 1. Identify all unique parent message IDs in the batch.
+    const uniqueParentIdsInBatch = [
+        ...new Set(messages.filter((m) => m.parentMessageId).map((m) => m.parentMessageId!)),
+    ];
+
+    // 2. Separate parent IDs that are in the current batch from those that need to be fetched.
+    const parentIdsToFetch = uniqueParentIdsInBatch.filter((id) => !currentBatchMessageIds.has(id));
+
+    let fetchedParentMessages: MessageDetail[] = [];
+    if (parentIdsToFetch.length > 0) {
+        const { data, error } = await supabase
+            .from('messages')
+            .select('id, text, body, created_at, parent_message_id')
+            .in('id', parentIdsToFetch);
+        if (error) {
+            console.error('Failed to fetch parent messages:', error.message);
+            // Decide how to handle this error - maybe throw, or just continue without this context.
+        } else {
+            fetchedParentMessages = data || [];
+        }
+    }
+
+    // 3. Fetch all thread messages for all relevant threads in a single query.
+    let allFetchedThreadMessages: MessageDetail[] = [];
+    if (uniqueParentIdsInBatch.length > 0) {
+        const { data, error } = await supabase
+            .from('messages')
+            .select('id, text, body, created_at, parent_message_id')
+            .in('parent_message_id', uniqueParentIdsInBatch)
+            .order('created_at', { ascending: true });
+        if (error) {
+            console.error('Failed to fetch thread messages:', error.message);
+        } else {
+            allFetchedThreadMessages = data || [];
+        }
+    }
+
+    // 4. Map all fetched data for easy lookup.
+    const allMessagesMap = new Map<string, MessageDetail>();
+    messages.forEach((msg) =>
+        allMessagesMap.set(msg.messageId, {
+            id: msg.messageId,
+            text: msg.text || '',
+            body: msg.body,
+            created_at: msg.createdAt,
+            parent_message_id: msg.parentMessageId,
+        }),
+    );
+    fetchedParentMessages.forEach((msg) => allMessagesMap.set(msg.id, msg));
+    allFetchedThreadMessages.forEach((msg) => allMessagesMap.set(msg.id, msg));
+
+    // 5. Build the context map for each thread.
+    for (const parentId of uniqueParentIdsInBatch) {
+        const parentMessage = allMessagesMap.get(parentId);
+
+        // Filter messages belonging to the current thread from the comprehensive list.
+        const allThreadMessages = Array.from(allMessagesMap.values()).filter((m) => m.parent_message_id === parentId);
+
+        // Ensure messages are sorted correctly by time.
+        allThreadMessages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+        const threadSummary = createThreadSummary(parentMessage, allThreadMessages);
+
+        contextMap.set(parentId, {
+            parentMessage,
+            allThreadMessages,
+            threadSummary,
+        });
+    }
+
+    return contextMap;
+}
+
+function createThreadSummary(parentMessage: MessageDetail | undefined, threadMessages: MessageDetail[]): string {
+    if (!parentMessage && threadMessages.length === 0) return '';
+
+    const allMessages = [parentMessage, ...threadMessages].filter(Boolean) as MessageDetail[];
+    const summaryParts = allMessages.map((msg) => (msg.text || msg.body).trim());
+
+    return summaryParts.join(' ');
+}
+
+function enrichContentWithThreadContext(content: string, threadContext?: ThreadContext): string {
+    if (!threadContext?.threadSummary) return content;
+
+    const contextPrefix = `[Thread context: ${threadContext.threadSummary}] `;
+    const maxContentLength = MODEL_MAX_TOKENS * 4 - contextPrefix.length;
+    const truncatedContent = content.slice(0, maxContentLength);
+
+    return contextPrefix + truncatedContent;
+}
+
+async function processOne(msg: SQSMessageBody, embedding: number[], threadContext?: ThreadContext) {
+    const { messageId, workspaceId, channelId, conversationId, createdAt, parentMessageId } = msg;
+
     const { data: ctxRows, error: ctxErr } = await supabase.rpc('find_semantic_neighbors', {
         p_embedding: embedding,
         p_workspace_id: workspaceId,
         p_exclude_message_id: messageId,
+        p_parent_message_id: parentMessageId,
+        p_channel_id: channelId,
+        p_conversation_id: conversationId,
         p_time_window_hours: CONTEXT_TIME_WINDOW_HOURS,
         p_similarity_threshold: SIMILARITY_THRESHOLD,
         p_limit: 10,
     });
+
     if (ctxErr) throw new Error(`Context lookup failed: ${ctxErr.message}`);
+
     const context_message_ids = (ctxRows as any[]).map((r) => r.message_id);
     const context_scores = (ctxRows as any[]).map((r) => r.similarity);
+    const context_types = (ctxRows as any[]).map((r) => r.context_type);
 
-    // --- 2. Heuristic analysis ---
     const content = (msg.text || msg.body).trim();
     const tokenCount = estimateTokenCount(content);
     const isShortAnswer = tokenCount <= 5;
-    const isQuestion =
-        /\?/.test(content) ||
-        /^(what|when|where|who|why|how|is|are|can|could|would|should|do|does|did)\b/i.test(content);
 
-    // --- 3. Upsert embedding row ---
     const embeddingRecord = {
         message_id: messageId,
         workspace_id: workspaceId,
         channel_id: channelId,
         conversation_id: conversationId,
+        parent_message_id: parentMessageId,
         embedding,
         embedding_model: EMBEDDING_MODEL,
         embedding_version: '1.0',
         context_message_ids,
         context_scores,
-        is_question: isQuestion,
+        context_types,
+        thread_summary: threadContext?.threadSummary || null,
         is_short_answer: isShortAnswer,
+        is_thread_message: !!parentMessageId,
         token_count: tokenCount,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
     };
+
     const { error: upsertErr } = await supabase
         .from('message_embeddings')
         .upsert(embeddingRecord, { onConflict: 'message_id' });
     if (upsertErr) throw new Error(`Upsert embedding failed: ${upsertErr.message}`);
 
-    // --- 4. Mark original message as processed ---
-    const { error: markErr } = await supabase.from('messages').update({ needs_embedding: false }).eq('id', messageId);
-    if (markErr) console.warn(`Could not mark ${messageId} processed: ${markErr.message}`);
+    return { messageId, tokenCount };
+}
 
-    // --- 5. Track usage via single RPC upsert ---
-    // You must define an RPC in Postgres like `upsert_workspace_embedding_usage`
-    // which does an INSERT ... ON CONFLICT (...) DO UPDATE
+async function batchUpdateMessagesProcessed(messageIds: string[]) {
+    if (messageIds.length === 0) return;
+
+    const { error } = await supabase.from('messages').update({ needs_embedding: false }).in('id', messageIds);
+
+    if (error) {
+        console.error(`Failed to batch update messages: ${error.message}`);
+    }
+}
+
+async function updateWorkspaceUsage(workspaceId: string, embeddingCount: number, totalTokens: number) {
     const month = new Date().toISOString().slice(0, 7) + '-01';
-    const estimatedCost = (tokenCount / 1_000_000) * 0.02; // USD per 1M tokens
+    const estimatedCost = (totalTokens / 1_000_000) * 0.02;
 
-    const { error: usageErr } = await supabase.rpc('upsert_workspace_embedding_usage', {
+    const { error } = await supabase.rpc('upsert_workspace_embedding_usage', {
         p_workspace_id: workspaceId,
         p_month: month,
-        p_embeddings_increment: 1,
-        p_tokens_increment: tokenCount,
+        p_embeddings_increment: embeddingCount,
+        p_tokens_increment: totalTokens,
         p_cost_increment: estimatedCost,
     });
-    if (usageErr) console.error(`Usage update failed: ${usageErr.message}`);
+
+    if (error) {
+        console.error(`Usage update failed: ${error.message}`);
+    }
 }
