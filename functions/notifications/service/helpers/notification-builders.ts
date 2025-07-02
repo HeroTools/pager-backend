@@ -17,7 +17,7 @@ export async function createChannelMessageNotifications(
     senderWorkspaceMemberId: string,
     workspaceId: string,
     messageId: string,
-    messageBody: string,
+    messageText: string,
     senderName: string,
 ): Promise<Notification[]> {
     const notifications: Notification[] = [];
@@ -42,7 +42,7 @@ export async function createChannelMessageNotifications(
             workspace_id: workspaceId,
             type: 'channel_message',
             title: `New message in #${channelName}`,
-            message: `${senderName}: ${truncateMessage(messageBody)}`,
+            message: `${senderName}: ${truncateMessage(messageText)}`,
             related_message_id: messageId,
             related_channel_id: channelId,
         });
@@ -60,7 +60,7 @@ export async function createMentionNotifications(
     senderWorkspaceMemberId: string,
     workspaceId: string,
     messageId: string,
-    messageBody: string,
+    messageText: string,
     senderName: string,
     channelId?: string,
     conversationId?: string,
@@ -80,10 +80,10 @@ export async function createMentionNotifications(
             if (channelId) {
                 const channelName = await getChannelName(client, channelId);
                 existingNotification.title = `${senderName} mentioned you in #${channelName}`;
-                existingNotification.message = truncateMessage(messageBody);
+                existingNotification.message = truncateMessage(messageText);
             } else {
                 existingNotification.title = `${senderName} mentioned you in a conversation`;
-                existingNotification.message = truncateMessage(messageBody);
+                existingNotification.message = truncateMessage(messageText);
             }
         } else {
             // Create new mention notification
@@ -102,7 +102,7 @@ export async function createMentionNotifications(
                 workspace_id: workspaceId,
                 type: 'mention',
                 title,
-                message: truncateMessage(messageBody),
+                message: truncateMessage(messageText),
                 related_message_id: messageId,
                 related_channel_id: channelId || undefined,
                 related_conversation_id: conversationId || undefined,
@@ -122,7 +122,7 @@ export async function createDirectMessageNotifications(
     senderWorkspaceMemberId: string,
     workspaceId: string,
     messageId: string,
-    messageBody: string,
+    messageText: string,
     senderName: string,
     existingNotifications: Notification[],
 ): Promise<Notification[]> {
@@ -156,7 +156,7 @@ export async function createDirectMessageNotifications(
                 workspace_id: workspaceId,
                 type: 'direct_message',
                 title: `New message from ${senderName}`,
-                message: truncateMessage(messageBody),
+                message: truncateMessage(messageText),
                 related_message_id: messageId,
                 related_conversation_id: conversationId,
             });
@@ -176,7 +176,7 @@ export async function createThreadReplyNotifications(
     senderWorkspaceMemberId: string,
     workspaceId: string,
     messageId: string,
-    messageBody: string,
+    messageText: string,
     senderName: string,
     channelId?: string,
     conversationId?: string,
@@ -207,7 +207,7 @@ export async function createThreadReplyNotifications(
             workspace_id: workspaceId,
             type: 'thread_reply',
             title,
-            message: truncateMessage(messageBody),
+            message: truncateMessage(messageText),
             related_message_id: messageId,
             related_channel_id: channelId || undefined,
             related_conversation_id: conversationId || undefined,
@@ -243,7 +243,7 @@ export async function createThreadReplyNotifications(
                 workspace_id: workspaceId,
                 type: 'thread_reply',
                 title,
-                message: truncateMessage(messageBody),
+                message: truncateMessage(messageText),
                 related_message_id: messageId,
                 related_channel_id: channelId || undefined,
                 related_conversation_id: conversationId || undefined,
