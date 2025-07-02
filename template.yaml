@@ -424,7 +424,7 @@ Resources:
         UpdateMessage:
           Type: Api
           Properties:
-            Path: /messages/{messageId}
+            Path: /workspaces/{workspaceId}/messages/{messageId}
             Method: put
             RestApiId: !Ref MainApi
     Metadata:
@@ -448,7 +448,7 @@ Resources:
         DeleteMessage:
           Type: Api
           Properties:
-            Path: /messages/{messageId}
+            Path: /workspaces/{workspaceId}/messages/{messageId}
             Method: delete
             RestApiId: !Ref MainApi
     Metadata:
