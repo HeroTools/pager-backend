@@ -30,7 +30,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             .from('messages')
             .select(`
                 *,
-                members!inner(user_id)
+                workspace_members!inner(user_id)
             `)
             .eq('id', messageId)
             .is('deleted_at', null)
@@ -47,8 +47,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Not a member of this workspace', 403, corsHeaders);
         }
 
-        // Verify ownership - compare member IDs
-        if (member.id !== message.member_id) {
+        // Verify ownership - compare workspace member IDs
+        if (member.id !== message.workspace_member_id) {
             return errorResponse('Can only delete your own messages', 403, corsHeaders);
         }
 
