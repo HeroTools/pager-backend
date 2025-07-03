@@ -1,274 +1,354 @@
-import { APIGatewayProxyHandler, APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { APIGatewayProxyHandler } from 'aws-lambda';
 import OpenAI from 'openai';
-import { supabase } from './utils/supabase-client';
-import { errorResponse, successResponse } from './utils/response';
+import { registerTypes, toSql } from 'pgvector/pg';
+import { z } from 'zod';
+import { successResponse, errorResponse, setCorsHeaders } from './utils/response';
+import dbPool from './utils/create-db-pool';
 import { getUserIdFromToken } from './helpers/auth';
-import { AuthError } from './utils/errors';
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY!,
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-3-small';
+const CHAT_MODEL = process.env.CHAT_MODEL || 'gpt-4.1';
+const SEARCH_LIMIT = parseInt(process.env.SEARCH_LIMIT || '20');
+const SIMILARITY_THRESHOLD = parseFloat(process.env.SIMILARITY_THRESHOLD || '0.6');
+
+// --- Zod schema for our tool’s output ---
+const ReferenceSearchSchema = z.object({
+    answer: z.string().describe('Markdown answer with inline citations [1],[2],…'),
+    references: z.array(
+        z.object({
+            messageId: z.string().describe('The ID of the referenced message'),
+            index: z.number().int().describe('Citation number corresponding to [index]'),
+        }),
+    ),
 });
 
-const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-3-small';
+// --- Define the single tool that the model will call ---
+const referenceSearchTool = [
+    {
+        type: 'function' as const,
+        name: 'reference_search',
+        description: 'Generate an answer with numbered citations back to message IDs',
+        strict: true,
+        parameters: {
+            type: 'object',
+            required: ['answer', 'references'],
+            properties: {
+                answer: {
+                    type: 'string',
+                    description: 'Markdown-formatted answer, using [1],[2],… to cite',
+                },
+                references: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        required: ['messageId', 'index'],
+                        properties: {
+                            messageId: {
+                                type: 'string',
+                                description: 'ID of the message being cited',
+                            },
+                            index: {
+                                type: 'integer',
+                                description: 'Citation number corresponding to [index]',
+                            },
+                        },
+                        additionalProperties: false,
+                    },
+                },
+            },
+            additionalProperties: false,
+        },
+    } as OpenAI.Responses.Tool,
+];
 
 interface SearchRequest {
     query: string;
     workspaceId: string;
+    userId: string;
+    limit?: number;
+    includeThreads?: boolean;
     channelId?: string;
     conversationId?: string;
-    limit?: number;
-    minScore?: number;
-    includeContext?: boolean;
 }
 
 interface SearchResult {
     messageId: string;
-    workspaceId: string;
-    channelId: string | null;
-    conversationId: string | null;
-    score: number;
-    message: {
-        id: string;
-        body: string;
-        text: string | null;
-        createdAt: string;
-        author: {
-            id: string;
-            name: string;
-            image: string | null;
-        };
-    };
-    context?: SearchResult[];
+    content: string;
+    similarity: number;
+    timestamp: string;
+    authorName: string;
+    authorImage?: string;
+    channelId?: string;
+    channelName?: string;
+    conversationId?: string;
+    isThread: boolean;
+    parentMessageId?: string;
+    threadSummary?: string;
+    contextType: 'channel' | 'conversation' | 'thread';
+    contextMessageIds: string[];
 }
 
-export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+interface SearchResponse {
+    answer: string;
+    references: { messageId: string; index: number }[];
+    results: SearchResult[];
+    totalCount: number;
+    query: string;
+    executionTime: number;
+}
+
+export const handler: APIGatewayProxyHandler = async (event, _ctx) => {
+    const origin = event.headers.Origin || event.headers.origin;
+    const corsHeaders = setCorsHeaders(origin, 'POST');
+
+    if (event.httpMethod === 'OPTIONS') {
+        return successResponse({ message: 'OK' }, 200, corsHeaders);
+    }
+
+    const start = Date.now();
+
     try {
-        const userId = await getUserIdFromToken(event.headers.Authorization || event.headers.authorization);
-        if (!userId) {
-            throw new AuthError('Unauthorized', 401);
+        const workspaceId = event.pathParameters?.workspaceId;
+        const userId = await getUserIdFromToken(event.headers.Authorization);
+        const body = JSON.parse(event.body || '{}') as SearchRequest;
+        const { query, limit = SEARCH_LIMIT, includeThreads = true, channelId, conversationId } = body;
+
+        if (!query?.trim()) {
+            return errorResponse('Search query is required', 400, corsHeaders);
+        }
+        if (!workspaceId || !userId) {
+            return errorResponse('Workspace ID and User ID are required', 400, corsHeaders);
         }
 
-        if (!event.body) {
-            return errorResponse('Request body is required', 400);
-        }
+        // 1) Embed
+        const embedding = await openai.embeddings
+            .create({
+                model: EMBEDDING_MODEL,
+                input: query.trim(),
+                encoding_format: 'float',
+                dimensions: 1536,
+            })
+            .then((r) => r.data[0].embedding);
 
-        const searchRequest: SearchRequest = JSON.parse(event.body);
-
-        if (!searchRequest.query?.trim()) {
-            return errorResponse('Query parameter is required', 400);
-        }
-
-        if (!searchRequest.workspaceId) {
-            return errorResponse('Workspace ID is required', 400);
-        }
-
-        await verifyWorkspaceAccess(userId, searchRequest.workspaceId);
-
-        const results = await performSemanticSearch(searchRequest);
-
-        return successResponse({
-            message: 'Search completed successfully',
-            data: {
-                query: searchRequest.query,
-                results: results,
-                count: results.length,
-            },
+        // 2) Vector search
+        const results = await searchMessages({
+            embedding,
+            workspaceId,
+            userId,
+            limit,
+            includeThreads,
+            channelId,
+            conversationId,
         });
-    } catch (error) {
-        console.error('Search error:', error);
-        return errorResponse(error.message, error.statusCode || 500);
+
+        // 3) Build the system + user messages for the Responses API
+        const formattedDocs = results
+            .map((r, i) => `${i + 1}. [${r.messageId}] ${r.content} ${r.isThread ? '(Part of thread)' : ''}`)
+            .join('\n');
+
+        const systemMessage = {
+            role: 'system' as const,
+            content: [
+                {
+                    type: 'input_text' as const,
+                    text: `You are an assistant that answers queries about a chat workspace by citing message IDs. 
+                    You are to be concise and provide only the answer and citations, without any additional explanation.`,
+                },
+            ],
+        };
+
+        const userMessage = {
+            role: 'user' as const,
+            content: [
+                {
+                    type: 'input_text' as const,
+                    text: `
+                    Question: "${query}"
+
+                    Here are the top ${results.length} retrieved messages:
+
+                    ${formattedDocs}
+
+                    Please provide a concise markdown answer with inline citations [1],[2],… where each [n] refers exactly to the nth message above and return JSON via the function call.
+          `.trim(),
+                },
+            ],
+        };
+
+        // 4) Invoke Responses API with our single tool
+        const resp = await openai.responses.create({
+            model: CHAT_MODEL,
+            input: [systemMessage, userMessage],
+            tools: referenceSearchTool,
+            stream: false,
+            temperature: 0.2,
+        });
+
+        const call = resp.output[0];
+        if (call.type !== 'function_call' || !call.arguments) {
+            throw new Error('Model did not invoke reference_search');
+        }
+
+        // 5) Parse & validate
+        const parsed = ReferenceSearchSchema.parse(JSON.parse(call.arguments));
+
+        console.log('Parsed:', parsed);
+
+        // 6) Return everything
+        const executionTime = Date.now() - start;
+        const out: SearchResponse = {
+            answer: parsed.answer,
+            references: parsed.references,
+            results,
+            totalCount: results.length,
+            query: query.trim(),
+            executionTime,
+        };
+
+        return successResponse(out, 200, corsHeaders);
+    } catch (err: any) {
+        console.error('Search+Reference error:', err);
+        return errorResponse(err.message || 'Internal error', 500, corsHeaders);
     }
 };
 
-async function verifyWorkspaceAccess(userId: string, workspaceId: string): Promise<void> {
-    const { data: membership, error } = await supabase
-        .from('workspace_members')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('workspace_id', workspaceId)
-        .eq('is_deactivated', false)
-        .single();
+async function searchMessages(params: {
+    embedding: number[];
+    workspaceId: string;
+    userId: string;
+    limit: number;
+    includeThreads: boolean;
+    channelId?: string;
+    conversationId?: string;
+}): Promise<SearchResult[]> {
+    const { embedding, workspaceId, userId, limit, includeThreads, channelId, conversationId } = params;
+    const client = await dbPool.connect();
+    await registerTypes(client);
 
-    if (error || !membership) {
-        throw errorResponse('Access denied to workspace', 403);
-    }
-}
-
-async function performSemanticSearch(request: SearchRequest): Promise<SearchResult[]> {
-    const {
-        query,
-        workspaceId,
-        channelId,
-        conversationId,
-        limit = 20,
-        minScore = 0.7,
-        includeContext = false,
-    } = request;
-
-    const queryEmbedding = await createEmbedding(query);
-
-    const searchResults = await searchEmbeddings(
-        queryEmbedding,
-        workspaceId,
-        channelId,
-        conversationId,
-        limit,
-        minScore,
-    );
-
-    const enrichedResults = await enrichResultsWithMessageData(searchResults);
-
-    if (includeContext) {
-        await addContextToResults(enrichedResults);
-    }
-
-    return enrichedResults;
-}
-
-async function createEmbedding(text: string): Promise<number[]> {
     try {
-        const response = await openai.embeddings.create({
-            model: EMBEDDING_MODEL,
-            input: text,
-            encoding_format: 'float',
-        });
+        const q: any[] = [workspaceId, userId, toSql(embedding), SIMILARITY_THRESHOLD, limit];
+        let idx = 6;
+        const channelFilter = channelId ? `AND c.id = $${idx++}` : '';
+        if (channelId) q.push(channelId);
+        const convoFilter = conversationId ? `AND conv.id = $${idx++}` : '';
+        if (conversationId) q.push(conversationId);
 
-        return response.data[0].embedding;
-    } catch (error) {
-        console.error('Failed to create query embedding:', error);
-        throw new Error(`Embedding creation failed: ${error.message}`);
-    }
-}
-
-async function searchEmbeddings(
-    queryEmbedding: number[],
-    workspaceId: string,
-    channelId?: string,
-    conversationId?: string,
-    limit = 20,
-    minScore = 0.7,
-): Promise<Array<{ messageId: string; channelId: string | null; conversationId: string | null; score: number }>> {
-    let whereConditions = `workspace_id = '${workspaceId}'`;
-
-    if (channelId) {
-        whereConditions += ` AND channel_id = '${channelId}'`;
-    } else if (conversationId) {
-        whereConditions += ` AND conversation_id = '${conversationId}'`;
-    }
-
-    const embeddingArray = `[${queryEmbedding.join(',')}]`;
-
-    const { data, error } = await supabase.rpc('search_message_embeddings', {
-        query_embedding: embeddingArray,
-        workspace_filter: workspaceId,
-        channel_filter: channelId,
-        conversation_filter: conversationId,
-        similarity_threshold: minScore,
-        match_limit: limit,
-    });
-
-    if (error) {
-        console.error('Embedding search failed:', error);
-        throw new Error(`Search failed: ${error.message}`);
-    }
-
-    return data || [];
-}
-
-async function enrichResultsWithMessageData(
-    searchResults: Array<{ messageId: string; channelId: string | null; conversationId: string | null; score: number }>,
-): Promise<SearchResult[]> {
-    if (searchResults.length === 0) {
-        return [];
-    }
-
-    const messageIds = searchResults.map((r) => r.messageId);
-
-    const { data: messages, error } = await supabase
-        .from('messages')
-        .select(
-            `
-            id,
-            body,
-            text,
-            created_at,
-            workspace_id,
+        const sql = `
+      WITH user_workspace_member AS (
+        SELECT id AS workspace_member_id
+        FROM workspace_members
+        WHERE user_id = $2 AND workspace_id = $1 AND is_deactivated = false
+      ),
+      accessible_channels AS (
+        SELECT c.id AS channel_id, c.name AS channel_name
+        FROM channels c
+        JOIN channel_members cm ON c.id = cm.channel_id
+        JOIN workspace_members wm ON cm.workspace_member_id = wm.id
+        WHERE c.workspace_id = $1
+          AND c.deleted_at IS NULL
+          AND cm.left_at IS NULL
+          ${channelFilter}
+      ),
+      accessible_conversations AS (
+        SELECT conv.id AS conversation_id
+        FROM conversations conv
+        JOIN conversation_members convm ON conv.id = convm.conversation_id
+        JOIN workspace_members wm ON convm.workspace_member_id = wm.id
+        WHERE conv.workspace_id = $1
+          AND convm.left_at IS NULL
+          AND convm.is_hidden = false
+          ${convoFilter}
+      ),
+      search_results AS (
+        SELECT
+          me.message_id,
+          me.similarity,
+          me.channel_id,
+          me.conversation_id,
+          me.parent_message_id,
+          me.thread_summary,
+          me.is_thread_message,
+          me.context_message_ids,
+          m.body,
+          m.text,
+          m.created_at,
+          u.name   AS author_name,
+          u.image  AS author_image,
+          ac.channel_name,
+          CASE
+            WHEN me.channel_id IS NOT NULL THEN 'channel'
+            WHEN me.conversation_id IS NOT NULL THEN 'conversation'
+            ELSE 'thread'
+          END AS context_type
+        FROM (
+          SELECT
+            message_id,
             channel_id,
             conversation_id,
-            workspace_member:workspace_member_id (
-                user:users (
-                    id,
-                    name,
-                    image
-                )
-            )
-        `,
-        )
-        .in('id', messageIds)
-        .is('deleted_at', null);
+            parent_message_id,
+            thread_summary,
+            is_thread_message,
+            context_message_ids,
+            1 - (embedding <=> $3) AS similarity
+          FROM message_embeddings
+          WHERE workspace_id = $1
+            AND (embedding <=> $3) < $4
+            ${!includeThreads ? 'AND parent_message_id IS NULL' : ''}
+          ORDER BY similarity ASC
+          LIMIT $5 * 2
+        ) me
+        JOIN messages m ON me.message_id = m.id
+        JOIN workspace_members wm ON m.workspace_member_id = wm.id
+        JOIN users u ON wm.user_id = u.id
+        LEFT JOIN accessible_channels ac ON me.channel_id = ac.channel_id
+        LEFT JOIN accessible_conversations aconv ON me.conversation_id = aconv.conversation_id
+        WHERE m.deleted_at IS NULL
+          AND (
+            (me.channel_id IS NOT NULL AND ac.channel_id IS NOT NULL)
+            OR
+            (me.conversation_id IS NOT NULL AND aconv.conversation_id IS NOT NULL)
+          )
+        ORDER BY me.similarity ASC
+        LIMIT $5
+      )
+      SELECT
+        message_id,
+        COALESCE(text, body) AS content,
+        similarity,
+        created_at,
+        author_name,
+        author_image,
+        channel_id,
+        channel_name,
+        conversation_id,
+        parent_message_id,
+        thread_summary,
+        is_thread_message,
+        context_type,
+        context_message_ids
+      FROM search_results
+      ORDER BY similarity ASC;
+    `;
 
-    if (error) {
-        throw new Error(`Failed to fetch message data: ${error.message}`);
-    }
-
-    const messageMap = new Map(messages?.map((m) => [m.id, m]) || []);
-
-    return searchResults
-        .map((result) => {
-            const message = messageMap.get(result.messageId);
-            if (!message) return null;
-
-            return {
-                messageId: result.messageId,
-                workspaceId: message.workspace_id,
-                channelId: result.channelId,
-                conversationId: result.conversationId,
-                score: result.score,
-                message: {
-                    id: message.id,
-                    body: message.body,
-                    text: message.text,
-                    createdAt: message.created_at,
-                    author: {
-                        id: message.workspace_member?.user?.id || '',
-                        name: message.workspace_member?.user?.name || 'Unknown User',
-                        image: message.workspace_member?.user?.image || null,
-                    },
-                },
-            };
-        })
-        .filter(Boolean) as SearchResult[];
-}
-
-async function addContextToResults(results: SearchResult[]): Promise<void> {
-    for (const result of results) {
-        const { data: embedding, error } = await supabase
-            .from('message_embeddings')
-            .select('context_message_ids, context_scores')
-            .eq('message_id', result.messageId)
-            .single();
-
-        if (error || !embedding || !embedding.context_message_ids?.length) {
-            result.context = [];
-            continue;
-        }
-
-        const contextResults: Array<{ messageId: string; score: number }> = embedding.context_message_ids.map(
-            (id: string, index: number) => ({
-                messageId: id,
-                score: embedding.context_scores[index] || 0,
-            }),
-        );
-
-        const enrichedContext = await enrichResultsWithMessageData(
-            contextResults.map((ctx) => ({
-                messageId: ctx.messageId,
-                channelId: result.channelId,
-                conversationId: result.conversationId,
-                score: ctx.score,
-            })),
-        );
-
-        result.context = enrichedContext;
+        const res = await client.query(sql, q);
+        return res.rows.map((row) => ({
+            messageId: row.message_id,
+            content: row.content,
+            similarity: parseFloat(row.similarity),
+            timestamp: row.created_at,
+            authorName: row.author_name,
+            authorImage: row.author_image,
+            channelId: row.channel_id,
+            channelName: row.channel_name,
+            conversationId: row.conversation_id,
+            isThread: row.is_thread_message,
+            parentMessageId: row.parent_message_id,
+            threadSummary: row.thread_summary,
+            contextType: row.context_type,
+            contextMessageIds: row.context_message_ids,
+        }));
+    } finally {
+        client.release();
     }
 }
