@@ -1,10 +1,9 @@
 import { ScheduledHandler } from 'aws-lambda';
 import { SQSClient, SendMessageBatchCommand, SendMessageBatchRequestEntry } from '@aws-sdk/client-sqs';
-import { supabase } from './utils/supabase-client';
-import { errorResponse, successResponse } from './utils/response';
+import { successResponse, errorResponse } from './utils/response';
+import dbPool from './utils/create-db-pool';
 
 const sqs = new SQSClient({});
-
 const BATCH_SIZE = parseInt(process.env.BATCH_SIZE || '100');
 const MAX_MESSAGES_PER_RUN = parseInt(process.env.MAX_MESSAGES_PER_RUN || '1000');
 const SQS_QUEUE_URL = process.env.SQS_QUEUE_URL!;
@@ -27,161 +26,117 @@ interface WorkspaceBatch {
 }
 
 export const handler: ScheduledHandler = async (event, context) => {
-    console.log('Embedding orchestrator started', { event });
+    console.log('Embedding orchestrator started');
 
     try {
-        const messages = await fetchMessagesNeedingEmbedding();
-
+        const messages = await fetchAndClaimMessages();
         if (messages.length === 0) {
-            console.log('No messages need embedding');
-            return successResponse({
-                message: 'No messages need embedding',
-                data: {
-                    processedCount: 0,
-                    workspaceCount: 0,
-                    sqsBatches: 0,
-                    failures: 0,
-                },
-            });
+            console.log('No messages to embed');
+            return successResponse({ message: 'No messages to embed', data: { processedCount: 0 } });
         }
 
-        console.log(`Found ${messages.length} messages needing embedding`);
-
+        console.log(`Claimed ${messages.length} messages for embedding`);
         const workspaceBatches = groupMessagesByWorkspace(messages);
-        const results = await sendToSQS(workspaceBatches);
+        const { batchCount, failures } = await sendToSQS(workspaceBatches);
 
-        console.log('Orchestration complete', {
-            totalMessages: messages.length,
-            workspaces: workspaceBatches.length,
-            sqsBatches: results.batchCount,
-            failures: results.failures,
-        });
-
+        console.log('Orchestration complete', { total: messages.length, batches: batchCount, failures });
         return successResponse({
             message: 'Embedding orchestrator completed',
             data: {
                 processedCount: messages.length,
                 workspaceCount: workspaceBatches.length,
-                sqsBatches: results.batchCount,
-                failures: results.failures,
+                sqsBatches: batchCount,
+                failures,
             },
         });
-    } catch (error) {
-        console.error('Orchestrator error:', error);
-        return errorResponse(error.message, 500);
+    } catch (err: any) {
+        console.error('Orchestrator error:', err);
+        return errorResponse(err.message || 'Unknown error', 500);
     }
 };
 
-async function fetchMessagesNeedingEmbedding(): Promise<MessageToEmbed[]> {
-    const allMessages: MessageToEmbed[] = [];
-    let lastCreatedAt: string | null = null;
-    let lastId: string | null = null;
+async function fetchAndClaimMessages(): Promise<MessageToEmbed[]> {
+    const staleThreshold = new Date(Date.now() - 10 * 60 * 1000);
+    const claimTimestamp = new Date();
 
-    while (allMessages.length < MAX_MESSAGES_PER_RUN) {
-        let query = supabase
-            .from('messages')
-            .select('id, workspace_id, channel_id, conversation_id, parent_message_id, created_at, body, text')
-            .eq('needs_embedding', true)
-            .is('deleted_at', null)
-            .order('created_at', { ascending: true })
-            .order('id', { ascending: true })
-            .limit(BATCH_SIZE);
+    const query = `
+        UPDATE messages 
+        SET claimed_at = $1
+        WHERE id IN (
+            SELECT id 
+            FROM messages 
+            WHERE needs_embedding = true 
+            AND deleted_at IS NULL
+            AND (claimed_at IS NULL OR claimed_at < $2)
+            ORDER BY created_at ASC, id ASC
+            LIMIT $3
+            FOR UPDATE SKIP LOCKED
+        )
+        RETURNING 
+            id, workspace_id, channel_id, conversation_id, 
+            parent_message_id, created_at, body, text
+    `;
 
-        if (lastCreatedAt && lastId) {
-            query = query.or(`created_at.gt.${lastCreatedAt},and(created_at.eq.${lastCreatedAt},id.gt.${lastId})`);
-        }
-
-        const { data, error } = await query;
-
-        if (error) {
-            throw new Error(`Failed to fetch messages: ${error.message}`);
-        }
-
-        if (!data || data.length === 0) {
-            break;
-        }
-
-        allMessages.push(...data);
-
-        const lastMessage = data[data.length - 1];
-        lastCreatedAt = lastMessage.created_at;
-        lastId = lastMessage.id;
-
-        if (data.length < BATCH_SIZE) {
-            break;
-        }
+    const client = await dbPool.connect();
+    try {
+        const result = await client.query(query, [claimTimestamp, staleThreshold, BATCH_SIZE]);
+        return result.rows;
+    } finally {
+        client.release();
     }
-
-    return allMessages;
 }
 
 function groupMessagesByWorkspace(messages: MessageToEmbed[]): WorkspaceBatch[] {
-    const workspaceMap = new Map<string, MessageToEmbed[]>();
-
-    for (const message of messages) {
-        const hasTextContent = message.text && /\S/.test(message.text);
-
-        if (hasTextContent) {
-            const existing = workspaceMap.get(message.workspace_id) || [];
-            existing.push(message);
-            workspaceMap.set(message.workspace_id, existing);
+    const map = new Map<string, MessageToEmbed[]>();
+    for (const msg of messages) {
+        if (msg.text && /\S/.test(msg.text)) {
+            const arr = map.get(msg.workspace_id) || [];
+            arr.push(msg);
+            map.set(msg.workspace_id, arr);
         }
     }
-
-    return Array.from(workspaceMap.entries())
-        .map(([workspace_id, messages]) => ({ workspace_id, messages }))
-        .sort((a, b) => a.messages.length - b.messages.length);
+    return Array.from(map, ([workspace_id, msgs]) => ({ workspace_id, messages: msgs })).sort(
+        (a, b) => a.messages.length - b.messages.length,
+    );
 }
 
-async function sendToSQS(workspaceBatches: WorkspaceBatch[]): Promise<{
-    batchCount: number;
-    failures: number;
-}> {
-    let batchCount = 0;
-    let failures = 0;
-    const sqsMessages: SendMessageBatchRequestEntry[] = [];
+async function sendToSQS(workspaceBatches: WorkspaceBatch[]) {
+    let batchCount = 0,
+        failures = 0;
+    const buffer: SendMessageBatchRequestEntry[] = [];
 
     for (const batch of workspaceBatches) {
-        for (const message of batch.messages) {
-            sqsMessages.push({
-                Id: message.id,
+        for (const msg of batch.messages) {
+            buffer.push({
+                Id: msg.id,
                 MessageBody: JSON.stringify({
-                    messageId: message.id,
-                    workspaceId: message.workspace_id,
-                    channelId: message.channel_id,
-                    conversationId: message.conversation_id,
-                    parentMessageId: message.parent_message_id,
-                    createdAt: message.created_at,
-                    body: message.body,
-                    text: message.text,
+                    messageId: msg.id,
+                    workspaceId: msg.workspace_id,
+                    channelId: msg.channel_id,
+                    conversationId: msg.conversation_id,
+                    parentMessageId: msg.parent_message_id,
+                    createdAt: msg.created_at,
+                    body: msg.body,
+                    text: msg.text,
                 }),
                 MessageAttributes: {
-                    workspaceId: {
-                        DataType: 'String',
-                        StringValue: message.workspace_id,
-                    },
-                    messageType: {
-                        DataType: 'String',
-                        StringValue: message.channel_id ? 'channel' : 'conversation',
-                    },
-                    isThreadMessage: {
-                        DataType: 'String',
-                        StringValue: message.parent_message_id ? 'true' : 'false',
-                    },
+                    workspaceId: { DataType: 'String', StringValue: msg.workspace_id },
+                    messageType: { DataType: 'String', StringValue: msg.channel_id ? 'channel' : 'conversation' },
+                    isThreadMessage: { DataType: 'String', StringValue: msg.parent_message_id ? 'true' : 'false' },
                 },
             });
 
-            if (sqsMessages.length === SQS_BATCH_SIZE) {
-                const result = await sendBatch(sqsMessages);
+            if (buffer.length === SQS_BATCH_SIZE) {
+                const result = await sendBatch(buffer);
                 batchCount++;
                 failures += result.failures;
-                sqsMessages.length = 0;
+                buffer.length = 0;
             }
         }
     }
 
-    if (sqsMessages.length > 0) {
-        const result = await sendBatch(sqsMessages);
+    if (buffer.length) {
+        const result = await sendBatch(buffer);
         batchCount++;
         failures += result.failures;
     }
@@ -189,25 +144,15 @@ async function sendToSQS(workspaceBatches: WorkspaceBatch[]): Promise<{
     return { batchCount, failures };
 }
 
-async function sendBatch(messages: SendMessageBatchRequestEntry[]): Promise<{
-    failures: number;
-}> {
+async function sendBatch(entries: SendMessageBatchRequestEntry[]) {
     try {
-        const command = new SendMessageBatchCommand({
-            QueueUrl: SQS_QUEUE_URL,
-            Entries: messages,
-        });
-
-        const response = await sqs.send(command);
-
-        if (response.Failed && response.Failed.length > 0) {
-            console.error('SQS batch send had failures:', response.Failed);
-            return { failures: response.Failed.length };
-        }
-
-        return { failures: 0 };
-    } catch (error) {
-        console.error('Failed to send SQS batch:', error);
-        return { failures: messages.length };
+        const cmd = new SendMessageBatchCommand({ QueueUrl: SQS_QUEUE_URL, Entries: entries });
+        const resp = await sqs.send(cmd);
+        const failCount = resp.Failed ? resp.Failed.length : 0;
+        if (failCount) console.error('SQS failures:', resp.Failed);
+        return { failures: failCount };
+    } catch (err) {
+        console.error('SQS batch send error:', err);
+        return { failures: entries.length };
     }
 }

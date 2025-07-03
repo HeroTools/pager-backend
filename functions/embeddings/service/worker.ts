@@ -178,7 +178,7 @@ async function buildThreadContextMap(messages: SQSMessageBody[]): Promise<Map<st
         // Ensure messages are sorted correctly by time.
         allThreadMessages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-        const threadSummary = createThreadSummary(parentMessage, allThreadMessages);
+        const threadSummary = await createThreadSummary(parentMessage, allThreadMessages);
 
         contextMap.set(parentId, {
             parentMessage,
@@ -190,13 +190,52 @@ async function buildThreadContextMap(messages: SQSMessageBody[]): Promise<Map<st
     return contextMap;
 }
 
-function createThreadSummary(parentMessage: MessageDetail | undefined, threadMessages: MessageDetail[]): string {
-    if (!parentMessage && threadMessages.length === 0) return '';
+async function createThreadSummary(
+    parentMessage: MessageDetail | undefined,
+    threadMessages: MessageDetail[],
+): Promise<string> {
+    const texts = [...(parentMessage ? [parentMessage] : []), ...threadMessages].map((m) => (m.text || m.body).trim());
 
-    const allMessages = [parentMessage, ...threadMessages].filter(Boolean) as MessageDetail[];
-    const summaryParts = allMessages.map((msg) => (msg.text || msg.body).trim());
+    const threadMessagesContent = texts.join('\n\n');
+    const systemMessage = {
+        role: 'system',
+        content: [
+            {
+                type: 'input_text',
+                text: 'Summarize this conversation into one concise paragraph, preserving key points and context. Do not include any additional information or context not present in the conversation. This summary will be used to provide context for a semantic search query.',
+            } as OpenAI.Responses.ResponseInputText,
+        ] as unknown as OpenAI.Responses.ResponseInputMessageContentList,
+    } as OpenAI.Responses.EasyInputMessage;
 
-    return summaryParts.join(' ');
+    const userMessage = {
+        role: 'user',
+        content: [
+            {
+                type: 'input_text',
+                text: threadMessagesContent,
+            } as OpenAI.Responses.ResponseInputText,
+        ] as unknown as OpenAI.Responses.ResponseInputMessageContentList,
+    } as OpenAI.Responses.EasyInputMessage;
+
+    const { output } = await openai.responses.create({
+        model: 'gpt-4.1-mini',
+        text: {
+            format: {
+                type: 'text',
+            },
+        },
+        stream: false,
+        temperature: 0.2,
+        max_output_tokens: 250,
+        input: [systemMessage, userMessage],
+    });
+
+    console.log(output?.[0].content?.[0].text?.trim());
+
+    if (output?.[0].content?.[0].text) {
+        return output?.[0].content?.[0].text?.trim() ?? '';
+    }
+    return threadMessagesContent;
 }
 
 function enrichContentWithThreadContext(content: string, threadContext?: ThreadContext): string {
