@@ -1693,7 +1693,7 @@ Resources:
         ApiEvent:
           Type: Api
           Properties:
-            Path: /search/semantic
+            Path: /workspaces/{workspaceId}/search/semantic
             Method: post
     Metadata:
       BuildMethod: esbuild
