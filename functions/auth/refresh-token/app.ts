@@ -1,8 +1,8 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { APIGatewayProxyHandler } from 'aws-lambda';
 import { supabase } from './utils/supabase-client';
 import { successResponse, errorResponse } from './utils/response';
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const handler: APIGatewayProxyHandler = async (event) => {
     try {
         const { refresh_token } = JSON.parse(event.body || '{}');
 
@@ -45,7 +45,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         return successResponse({
             session: data.session,
-            user: data.user,
         });
     } catch (error) {
         console.error('Error refreshing token:', error);
