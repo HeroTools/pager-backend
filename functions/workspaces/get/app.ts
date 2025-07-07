@@ -17,6 +17,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             .select(
                 `
           workspace_id,
+          role,
           workspaces (
             id,
             name,
