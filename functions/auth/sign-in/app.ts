@@ -1,9 +1,20 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { supabase } from './utils/supabase-client';
-import { successResponse, errorResponse } from './utils/response';
-import { SignInRequestBody, UserProfile, Workspace, SignInResponse } from './types';
+import { successResponse, errorResponse, setCorsHeaders } from './utils/response';
+import { SignInRequestBody, UserProfile, Workspace, AuthResponse } from './types';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    const origin = event.headers.Origin || event.headers.origin;
+    const corsHeaders = setCorsHeaders(origin, 'POST');
+
+    // 1) Handle preflight
+    if (event.httpMethod === 'OPTIONS') {
+        return {
+            statusCode: 200,
+            headers: corsHeaders,
+            body: '',
+        };
+    }
     try {
         const body: SignInRequestBody = JSON.parse(event.body || '{}');
         const { email, password } = body;
@@ -12,7 +23,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Email and password are required', 400);
         }
 
-        // Authenticate user
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
             email,
             password,
@@ -29,12 +39,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         const userId = authData.user.id;
 
-        // Fetch user profile and workspaces in parallel
         const [profileResult, workspacesResult] = await Promise.allSettled([
-            // Get user profile
             supabase.from('users').select('*').eq('id', userId).single(),
-
-            // Get user's workspaces with their roles
             supabase
                 .from('workspace_members')
                 .select(
@@ -51,11 +57,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
                 `,
                 )
                 .eq('user_id', userId)
-                .eq('workspaces.is_active', true) // Only active workspaces
+                .eq('workspaces.is_active', true)
                 .order('created_at', { ascending: true, referencedTable: 'workspaces' }),
         ]);
 
-        // Handle profile fetch result
         let userProfile: UserProfile | null = null;
         if (profileResult.status === 'fulfilled' && !profileResult.value.error) {
             userProfile = profileResult.value.data;
@@ -66,7 +71,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             );
         }
 
-        // Handle workspaces fetch result
         let workspaces: Workspace[] = [];
         if (workspacesResult.status === 'fulfilled' && !workspacesResult.value.error) {
             workspaces = workspacesResult.value.data.map((item: any) => ({
@@ -80,36 +84,57 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             );
         }
 
-        // Determine default workspace
-        let defaultWorkspaceId: string | undefined;
+        let default_workspace_id: string | undefined;
 
         if (workspaces.length > 0) {
-            // Priority: last_workspace_id > first owned workspace > first workspace
             if (userProfile?.last_workspace_id) {
                 const lastWorkspace = workspaces.find((w) => w.id === userProfile.last_workspace_id);
                 if (lastWorkspace) {
-                    defaultWorkspaceId = lastWorkspace.id;
+                    default_workspace_id = lastWorkspace.id;
                 }
             }
 
-            if (!defaultWorkspaceId) {
-                // Find first owned workspace
+            if (!default_workspace_id) {
                 const ownedWorkspace = workspaces.find((w) => w.role === 'owner');
-                defaultWorkspaceId = ownedWorkspace?.id || workspaces[0].id;
+                default_workspace_id = ownedWorkspace?.id || workspaces[0].id;
+
+                const { error: updateError } = await supabase
+                    .from('users')
+                    .update({ last_workspace_id: default_workspace_id })
+                    .eq('id', userId);
+                if (updateError) {
+                    console.error('Error updating user profile:', updateError);
+                }
             }
         }
 
-        const response: SignInResponse = {
-            user: authData.user,
-            session: authData.session,
+        const response: AuthResponse = {
+            user: {
+                id: authData.user.id,
+                email: authData.user.email!,
+                name: authData.user.user_metadata?.name,
+                email_confirmed_at: authData.user.email_confirmed_at,
+                created_at: authData.user.created_at!,
+                updated_at: authData.user.updated_at,
+                user_metadata: authData.user.user_metadata,
+            },
+            session: {
+                access_token: authData.session.access_token,
+                refresh_token: authData.session.refresh_token,
+                expires_in: authData.session.expires_in,
+                expires_at: authData.session.expires_at,
+                token_type: authData.session.token_type,
+            },
             profile: userProfile || {
                 id: userId,
                 email: authData.user.email!,
+                name: authData.user.user_metadata?.name,
                 created_at: authData.user.created_at!,
                 updated_at: new Date().toISOString(),
             },
             workspaces,
-            defaultWorkspaceId,
+            default_workspace_id,
+            is_new_user: false,
         };
 
         return successResponse(response);

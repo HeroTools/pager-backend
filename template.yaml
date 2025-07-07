@@ -1572,3 +1572,142 @@ Resources:
         Target: es2022
         EntryPoints:
           - delete-attachment.ts
+
+  # 1. SQS Queue for message processing
+  EmbeddingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AWS::StackName}-embedding-queue
+      VisibilityTimeout: 300 # 5 minutes (match Lambda timeout)
+      MessageRetentionPeriod: 1209600 # 14 days
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt EmbeddingDLQ.Arn
+        maxReceiveCount: 3
+
+  EmbeddingDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AWS::StackName}-embedding-dlq
+
+  # 2. EventBridge Rule
+  EmbeddingScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: "rate(5 minutes)"
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt EmbeddingOrchestratorFunction.Arn
+          Id: "EmbeddingOrchestratorTarget"
+
+  # 3. Lambda Functions
+  EmbeddingOrchestratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/embeddings/service
+      Handler: orchestrator.handler
+      Runtime: nodejs20.x
+      Timeout: 60
+      MemorySize: 512
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+                - sqs:SendMessageBatch
+              Resource: !GetAtt EmbeddingQueue.Arn
+            - Effect: Allow
+              Action:
+                - sqs:ReceiveMessage
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+              Resource: !GetAtt EmbeddingQueue.Arn
+      Environment:
+        Variables:
+          SQS_QUEUE_URL: !Ref EmbeddingQueue
+          BATCH_SIZE: 100
+          MAX_MESSAGES_PER_RUN: 1000
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - orchestrator.ts
+
+  EmbeddingWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/embeddings/service
+      Handler: worker.handler
+      Runtime: nodejs20.x
+      Timeout: 300 # 5 minutes for processing
+      MemorySize: 1024 # More memory for vector operations
+      Environment:
+        Variables:
+          EMBEDDING_MODEL: "text-embedding-3-small"
+          SIMILARITY_THRESHOLD: "0.7"
+          CONTEXT_TIME_WINDOW_HOURS: "48"
+          BATCH_SIZE: "100"
+          MODEL_MAX_TOKENS: "8191"
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+                - sqs:SendMessageBatch
+              Resource: !GetAtt EmbeddingQueue.Arn
+            - Effect: Allow
+              Action:
+                - sqs:ReceiveMessage
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+              Resource: !GetAtt EmbeddingQueue.Arn
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt EmbeddingQueue.Arn
+            BatchSize: 25 # Process 25 messages at a time
+            MaximumBatchingWindowInSeconds: 20
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - worker.ts
+
+  SemanticSearchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/search/service
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Timeout: 30
+      MemorySize: 512
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/search/semantic
+            Method: post
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - app.ts
+
+  # 4. Permissions
+  EmbeddingOrchestratorInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref EmbeddingOrchestratorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EmbeddingScheduleRule.Arn
