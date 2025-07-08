@@ -2,9 +2,10 @@ import { APIGatewayProxyHandler } from 'aws-lambda';
 import OpenAI from 'openai';
 import { registerTypes, toSql } from 'pgvector/pg';
 import { z } from 'zod';
-import { successResponse, errorResponse, setCorsHeaders } from './utils/response';
-import dbPool from './utils/create-db-pool';
-import { getUserIdFromToken } from './helpers/auth';
+import { successResponse, errorResponse, setCorsHeaders } from '../../common/utils/response';
+import dbPool from '../../common/utils/create-db-pool';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { SearchRequest, SearchResponse, SearchResult } from '../types';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-3-small';
@@ -61,42 +62,6 @@ const referenceSearchTool = [
         },
     } as OpenAI.Responses.Tool,
 ];
-
-interface SearchRequest {
-    query: string;
-    workspaceId: string;
-    userId: string;
-    limit?: number;
-    includeThreads?: boolean;
-    channelId?: string;
-    conversationId?: string;
-}
-
-interface SearchResult {
-    messageId: string;
-    content: string;
-    similarity: number;
-    timestamp: string;
-    authorName: string;
-    authorImage?: string;
-    channelId?: string;
-    channelName?: string;
-    conversationId?: string;
-    isThread: boolean;
-    parentMessageId?: string;
-    threadSummary?: string;
-    contextType: 'channel' | 'conversation' | 'thread';
-    contextMessageIds: string[];
-}
-
-interface SearchResponse {
-    answer: string;
-    references: { messageId: string; index: number }[];
-    results: SearchResult[];
-    totalCount: number;
-    query: string;
-    executionTime: number;
-}
 
 export const handler: APIGatewayProxyHandler = async (event, _ctx) => {
     const origin = event.headers.Origin || event.headers.origin;
