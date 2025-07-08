@@ -1,8 +1,8 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { getUserIdFromToken } from './helpers/auth';
-import { getWorkspaceMember } from './helpers/get-member';
-import { supabase } from './utils/supabase-client';
-import { errorResponse, successResponse } from './utils/response';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { getMember } from '../../common/helpers/get-member';
+import { supabase } from '../../common/utils/supabase-client';
+import { errorResponse, successResponse } from '../../common/utils/response';
 
 interface TypingRequest {
     is_typing: boolean;
@@ -31,7 +31,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         const requestBody: TypingRequest = JSON.parse(event.body || '{}');
         const { is_typing } = requestBody;
 
-        const workspaceMember = await getWorkspaceMember(workspaceId, userId);
+        const workspaceMember = await getMember(workspaceId, userId);
 
         if (!workspaceMember) {
             return errorResponse('Not a member of this workspace', 403);

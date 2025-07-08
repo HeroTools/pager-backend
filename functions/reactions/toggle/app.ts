@@ -1,9 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
-import { getUserIdFromToken } from './helpers/auth';
-import { successResponse, errorResponse, setCorsHeaders } from './utils/response';
-import dbPool from './utils/create-db-pool';
-import { getWorkspaceMember } from './helpers/get-member';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { successResponse, errorResponse, setCorsHeaders } from '../../common/utils/response';
+import dbPool from '../../common/utils/create-db-pool';
+import { getWorkspaceMember } from '../../common/helpers/get-member';
 import { verifyMessageInWorkspace } from './helpers/verify-message';
 
 const PathParamsSchema = z.object({
@@ -66,7 +66,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         client = await dbPool.connect();
 
-        const workspaceMember = await getWorkspaceMember(client, userId, workspaceId);
+        const workspaceMember = await getWorkspaceMember(client, workspaceId, userId);
         if (!workspaceMember) {
             return errorResponse('User not found in workspace', 403, headers);
         }

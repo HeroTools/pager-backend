@@ -1,11 +1,11 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { z, ZodError } from 'zod';
 import { PoolClient, DatabaseError } from 'pg';
-import { getUserIdFromToken } from './helpers/auth';
-import { getWorkspaceMember } from './helpers/get-member';
-import { successResponse, errorResponse } from './utils/response';
-import dbPool from './utils/create-db-pool';
-import { ApplicationError, AuthError, ChannelError } from './utils/errors';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { getWorkspaceMember } from '../../common/helpers/get-member';
+import { successResponse, errorResponse } from '../../common/utils/response';
+import dbPool from '../../common/utils/create-db-pool';
+import { ApplicationError, AuthError, ChannelError } from '../../common/utils/errors';
 
 const CHANNEL_MEMBER_ROLE = 'member';
 const PRIVATE_CHANNEL_TYPE = 'private';
@@ -122,7 +122,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
         body = inviteMembersRequestSchema.parse(JSON.parse(event.body || '{}'));
     } catch (err) {
         if (err instanceof ZodError) {
-            return errorResponse('Validation failed', 400, { errors: err.errors });
+            return errorResponse('Validation failed', 400, {}, { errors: err.errors });
         }
         return errorResponse('Invalid JSON', 400);
     }
