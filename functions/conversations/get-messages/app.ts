@@ -4,7 +4,8 @@ import { z } from 'zod';
 import dbPool from '../../common/utils/create-db-pool';
 import { getUserIdFromToken } from '../../common/helpers/auth';
 import { successResponse, errorResponse } from '../../common/utils/response';
-import { MessageWithUser, ConversationMemberWithUser } from '../types';
+import type { ConversationMemberWithUser } from '../types';
+import type { MessageWithUser } from '../../common/types';
 
 const PathParamsSchema = z.object({
     conversationId: z.string().uuid(),
