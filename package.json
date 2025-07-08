@@ -19,7 +19,11 @@
     "compile": "tsc",
     "format": "prettier --write ./functions",
     "test": "npm run compile && npm run unit",
-    "local": "sam build && sam local start-api"
+    "build": "sam build",
+    "local:dev": "npm run build && sam local start-api -p 8081 --parameter-overrides StageName=Dev --config-env dev --profile unowned-prod",
+    "local:prod": "npm run build && sam local start-api -p 8081 --parameter-overrides StageName=Prod --config-env prod --profile unowned-prod",
+    "deploy:prod": "npm run build && sam deploy --config-env prod --profile unowned-prod",
+    "deploy:dev": "npm run build && sam deploy --config-env dev --profile unowned-prod"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.109",
