@@ -4,32 +4,32 @@ import { getMember } from '../../common/helpers/get-member';
 import { successResponse, errorResponse } from '../../common/utils/response';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    try {
-        const userId = await getUserIdFromToken(event.headers.Authorization);
+  try {
+    const userId = await getUserIdFromToken(event.headers.Authorization);
 
-        console.log(userId);
+    console.log(userId);
 
-        if (!userId) {
-            return successResponse(null);
-        }
-
-        const workspaceId = event.pathParameters?.workspaceId;
-
-        if (!workspaceId) {
-            return errorResponse('Workspace ID is required', 400);
-        }
-
-        const member = await getMember(workspaceId, userId);
-
-        console.log(member);
-
-        if (!member) {
-            return successResponse(null);
-        }
-
-        return successResponse(member);
-    } catch (error) {
-        console.error('Error getting current member:', error);
-        return errorResponse('Internal server error', 500);
+    if (!userId) {
+      return successResponse(null);
     }
+
+    const workspaceId = event.pathParameters?.workspaceId;
+
+    if (!workspaceId) {
+      return errorResponse('Workspace ID is required', 400);
+    }
+
+    const member = await getMember(workspaceId, userId);
+
+    console.log(member);
+
+    if (!member) {
+      return successResponse(null);
+    }
+
+    return successResponse(member);
+  } catch (error) {
+    console.error('Error getting current member:', error);
+    return errorResponse('Internal server error', 500);
+  }
 };
