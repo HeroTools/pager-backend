@@ -1,0 +1,76 @@
+{
+    "dev": [
+        {
+            "name": "supabase-url",
+            "value": "https://your-project.supabase.co",
+            "type": "String"
+        },
+        {
+            "name": "supabase-anon-key",
+            "value": "CHANGE_ME",
+            "type": "String"
+        },
+        {
+            "name": "supabase-service-role-key",
+            "value": "CHANGE_ME",
+            "type": "SecureString"
+        },
+        {
+            "name": "supabase-url",
+            "value": "CHANGE_ME",
+            "type": "String"
+        },
+        {
+            "name": "pg-user",
+            "value": "postgres.your-project",
+            "type": "String"
+        },
+        {
+            "name": "pg-host",
+            "value": "your-db-host.supabase.com",
+            "type": "String"
+        },
+        {
+            "name": "pg-database",
+            "value": "postgres",
+            "type": "String"
+        },
+        {
+            "name": "pg-password",
+            "value": "CHANGE_ME",
+            "type": "SecureString"
+        },
+        {
+            "name": "pg-port",
+            "value": "6543",
+            "type": "String"
+        },
+        {
+            "name": "app-url-base",
+            "value": "http://localhost:3000",
+            "type": "String"
+        },
+        {
+            "name": "allowed-origins",
+            "value": "http://localhost:3000",
+            "type": "String"
+        }
+    ],
+    "prod": [
+        {
+            "name": "openai-api-key",
+            "value": "CHANGE_ME",
+            "type": "SecureString"
+        },
+        {
+            "name": "google-client-id",
+            "value": "CHANGE_ME",
+            "type": "String"
+        },
+        {
+            "name": "google-client-secret",
+            "value": "CHANGE_ME",
+            "type": "SecureString"
+        }
+    ]
+}

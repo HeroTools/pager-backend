@@ -22,61 +22,18 @@ Globals:
     MemorySize: 512
     Environment:
       Variables:
-        OPENAI_API_KEY: ***REMOVED***
-        GOOGLE_CLIENT_ID: ***REMOVED***
-        GOOGLE_CLIENT_SECRET: ***REMOVED***
-        SUPABASE_URL: !If
-          - IsDev
-          - ***REMOVED***
-          - !If
-            - IsProd
-            - ***REMOVED***
-            - ***REMOVED***
-        SUPABASE_ANON_KEY: !If
-          - IsDev
-          - ***REMOVED***
-          - !If
-            - IsProd
-            - ***REMOVED***
-            - ***REMOVED***
-        SUPABASE_SERVICE_ROLE_KEY: !If
-          - IsDev
-          - ***REMOVED***
-          - !If
-            - IsProd
-            - ***REMOVED***
-            - ***REMOVED***
-        PG_USER: !If
-          - IsDev
-          - ***REMOVED***
-          - !If
-            - IsProd
-            - ***REMOVED***
-            - ***REMOVED***
-        PG_HOST: !If
-          - IsDev
-          - ***REMOVED***
-          - !If
-            - IsProd
-            - ***REMOVED***
-            - ***REMOVED***
-        PG_DATABASE: ***REMOVED***
-        PG_PASSWORD: !If
-          - IsDev
-          - ***REMOVED***
-          - !If
-            - IsProd
-            - ***REMOVED***
-            - ***REMOVED***
-        PG_PORT: 6543
-        APP_URL_BASE: !If
-          - IsDev
-          - '***REMOVED***'
-          - !If
-            - IsProd
-            - 'https://app.askbex.ai'
-            - 'https://app.askbex.ai'
-        ALLOWED_ORIGINS: 'https://app.askbex.ai,***REMOVED***,https://unowned-dev.vercel.app,https://unowned-frontend-*.vercel.app'
+        OPENAI_API_KEY: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/openai-api-key:}}'
+        GOOGLE_CLIENT_ID: !Sub '{{resolve:ssm:/unowned/${StageName}/google-client-id:}}'
+        SUPABASE_URL: !Sub '{{resolve:ssm:/unowned/${StageName}/supabase-url}}'
+        SUPABASE_ANON_KEY: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/supabase-anon-key:}}'
+        SUPABASE_SERVICE_ROLE_KEY: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/supabase-service-role-key:}}'
+        PG_USER: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-user:}}'
+        PG_HOST: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-host:}}'
+        PG_DATABASE: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-database:}}'
+        PG_PASSWORD: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/pg-password:}}'
+        PG_PORT: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-port:}}'
+        FRONTEND_URL: !Sub '{{resolve:ssm:/unowned/${StageName}/frontend-url:}}'
+        ALLOWED_ORIGINS: !Sub '{{resolve:ssm:/unowned/${StageName}/allowed-origins:}}'
   Api:
     Cors:
       AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
@@ -1071,9 +1028,6 @@ Resources:
       Runtime: nodejs22.x
       Architectures:
         - arm64
-      Environment:
-        Variables:
-          FRONTEND_URL: https://localhost:3000
       Events:
         SignUp:
           Type: Api
@@ -1122,9 +1076,6 @@ Resources:
       Runtime: nodejs22.x
       Architectures:
         - arm64
-      Environment:
-        Variables:
-          FRONTEND_URL: https://localhost:3000
       Events:
         GetInviteLink:
           Type: Api
@@ -1245,9 +1196,6 @@ Resources:
       Runtime: nodejs22.x
       Architectures:
         - arm64
-      Environment:
-        Variables:
-          FRONTEND_URL: https://localhost:3000
       Events:
         ResetPasswordRequest:
           Type: Api
@@ -1464,9 +1412,6 @@ Resources:
       Architectures:
         - arm64
       Tracing: Active
-      Environment:
-        Variables:
-          FRONTEND_URL: https://localhost:3000
       Events:
         InitiateGoogleAuth:
           Type: Api
