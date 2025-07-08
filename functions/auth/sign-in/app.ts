@@ -1,7 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { supabase } from './utils/supabase-client';
-import { successResponse, errorResponse, setCorsHeaders } from './utils/response';
-import { SignInRequestBody, UserProfile, Workspace, AuthResponse } from './types';
+import { supabase } from '../../common/utils/supabase-client';
+import { successResponse, errorResponse, setCorsHeaders } from '../../common/utils/response';
+import { SignInRequestBody, UserProfile, Workspace, AuthResponse } from '../types';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     const origin = event.headers.Origin || event.headers.origin;

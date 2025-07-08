@@ -1,6 +1,6 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { successResponse, errorResponse } from './utils/response';
 import { createClient } from '@supabase/supabase-js';
+import { successResponse, errorResponse } from '../../common/utils/response';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
