@@ -1,11 +1,12 @@
-import { APIGatewayProxyHandler } from 'aws-lambda';
+import { APIGatewayProxyEvent, Context } from 'aws-lambda';
 import { getUserIdFromToken } from '../../common/helpers/auth';
 import { getWorkspaceMember } from '../../common/helpers/get-member';
 import { successResponse, errorResponse } from '../../common/utils/response';
 import { parseChannelName } from '../helpers/parse-channel-name';
 import dbPool from '../../common/utils/create-db-pool';
+import { withCors } from '../../common/utils/cors';
 
-export const handler: APIGatewayProxyHandler = async (event, context) => {
+export const handler = withCors(async (event: APIGatewayProxyEvent, context: Context) => {
   context.callbackWaitsForEmptyEventLoop = false;
   let client;
   try {
@@ -92,4 +93,4 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
       client.release();
     }
   }
-};
+});
