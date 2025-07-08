@@ -1,4 +1,4 @@
-import { APIGatewayProxyHandler } from 'aws-lambda';
+import { APIGatewayProxyEvent, Context } from 'aws-lambda';
 import { z, ZodError } from 'zod';
 import { PoolClient, DatabaseError } from 'pg';
 import { getUserIdFromToken } from '../../common/helpers/auth';
@@ -6,6 +6,7 @@ import { getWorkspaceMember } from '../../common/helpers/get-member';
 import { successResponse, errorResponse } from '../../common/utils/response';
 import dbPool from '../../common/utils/create-db-pool';
 import { ApplicationError, AuthError, ChannelError } from '../../common/utils/errors';
+import { withCors } from '../../common/utils/cors';
 
 const CHANNEL_MEMBER_ROLE = 'member';
 const PRIVATE_CHANNEL_TYPE = 'private';
@@ -118,7 +119,7 @@ const inviteMembersToChannel = async (
   );
 };
 
-export const handler: APIGatewayProxyHandler = async (event, context) => {
+export const handler = withCors(async (event: APIGatewayProxyEvent, context: Context) => {
   context.callbackWaitsForEmptyEventLoop = false;
   let params, body;
   try {
@@ -211,4 +212,4 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
   } finally {
     client?.release();
   }
-};
+});

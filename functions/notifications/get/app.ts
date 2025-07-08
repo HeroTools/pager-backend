@@ -3,8 +3,9 @@ import { PoolClient } from 'pg';
 import { z } from 'zod';
 import dbPool from '../../common/utils/create-db-pool';
 import { getUserIdFromToken } from '../../common/helpers/auth';
-import { errorResponse, setCorsHeaders, successResponse } from '../../common/utils/response';
+import { errorResponse, successResponse } from '../../common/utils/response';
 import { getWorkspaceMember } from '../../common/helpers/get-member';
+import { withCors } from '../../common/utils/cors';
 
 const QueryParamsSchema = z.object({
   limit: z
@@ -22,71 +23,63 @@ const pathParamsSchema = z.object({
   workspaceId: z.string().uuid('workspaceId is required'),
 });
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  const origin = event.headers.Origin || event.headers.origin;
-  const corsHeaders = setCorsHeaders(origin, 'POST');
+export const handler = withCors(
+  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    let client: PoolClient | null = null;
 
-  if (event.httpMethod === 'OPTIONS') {
-    return successResponse({ message: 'OK' }, 200, corsHeaders);
-  }
+    try {
+      const pathParamsResult = pathParamsSchema.safeParse(event.pathParameters || {});
+      if (!pathParamsResult.success) {
+        return errorResponse(
+          `Invalid path parameters: ${pathParamsResult.error.errors
+            .map((e) => e.message)
+            .join(', ')}`,
+          400,
+        );
+      }
 
-  let client: PoolClient | null = null;
+      const { workspaceId } = pathParamsResult.data;
 
-  try {
-    const pathParamsResult = pathParamsSchema.safeParse(event.pathParameters || {});
-    if (!pathParamsResult.success) {
-      return errorResponse(
-        `Invalid path parameters: ${pathParamsResult.error.errors
-          .map((e) => e.message)
-          .join(', ')}`,
-        400,
-        corsHeaders,
-      );
-    }
+      const queryParamsResult = QueryParamsSchema.safeParse(event.queryStringParameters || {});
+      if (!queryParamsResult.success) {
+        return errorResponse(
+          `Invalid query parameters: ${queryParamsResult.error.errors
+            .map((e) => e.message)
+            .join(', ')}`,
+          400,
+        );
+      }
 
-    const { workspaceId } = pathParamsResult.data;
+      const { limit, cursor, unreadOnly } = queryParamsResult.data;
 
-    const queryParamsResult = QueryParamsSchema.safeParse(event.queryStringParameters || {});
-    if (!queryParamsResult.success) {
-      return errorResponse(
-        `Invalid query parameters: ${queryParamsResult.error.errors
-          .map((e) => e.message)
-          .join(', ')}`,
-        400,
-        corsHeaders,
-      );
-    }
+      const userId = await getUserIdFromToken(event.headers.Authorization);
+      if (!userId) {
+        return errorResponse('Unauthorized', 401);
+      }
 
-    const { limit, cursor, unreadOnly } = queryParamsResult.data;
+      client = await dbPool.connect();
 
-    const userId = await getUserIdFromToken(event.headers.Authorization);
-    if (!userId) {
-      return errorResponse('Unauthorized', 401, corsHeaders);
-    }
+      const member = await getWorkspaceMember(client, workspaceId, userId);
 
-    client = await dbPool.connect();
+      if (!member?.id) {
+        return errorResponse('Not a member of this workspace', 403);
+      }
 
-    const member = await getWorkspaceMember(client, workspaceId, userId);
+      let whereClause = 'WHERE n.workspace_member_id = $1 AND n.workspace_id = $2';
+      const queryParams: any[] = [member.id, workspaceId];
+      let paramIndex = 3;
 
-    if (!member?.id) {
-      return errorResponse('Not a member of this workspace', 403, corsHeaders);
-    }
+      if (unreadOnly) {
+        whereClause += ` AND n.is_read = false`;
+      }
 
-    let whereClause = 'WHERE n.workspace_member_id = $1 AND n.workspace_id = $2';
-    const queryParams: any[] = [member.id, workspaceId];
-    let paramIndex = 3;
+      if (cursor) {
+        whereClause += ` AND n.created_at < $${paramIndex}`;
+        queryParams.push(cursor);
+        paramIndex++;
+      }
 
-    if (unreadOnly) {
-      whereClause += ` AND n.is_read = false`;
-    }
-
-    if (cursor) {
-      whereClause += ` AND n.created_at < $${paramIndex}`;
-      queryParams.push(cursor);
-      paramIndex++;
-    }
-
-    const notificationsQuery = `
+      const notificationsQuery = `
             SELECT 
                 n.id,
                 n.workspace_id,
@@ -109,46 +102,45 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             LIMIT $${paramIndex}
         `;
 
-    queryParams.push(limit + 1);
+      queryParams.push(limit + 1);
 
-    const { rows: notifications } = await client.query(notificationsQuery, queryParams);
+      const { rows: notifications } = await client.query(notificationsQuery, queryParams);
 
-    const hasMore = notifications.length > limit;
-    const resultNotifications = hasMore ? notifications.slice(0, limit) : notifications;
+      const hasMore = notifications.length > limit;
+      const resultNotifications = hasMore ? notifications.slice(0, limit) : notifications;
 
-    const nextCursor =
-      resultNotifications.length > 0
-        ? resultNotifications[resultNotifications.length - 1].created_at
-        : null;
+      const nextCursor =
+        resultNotifications.length > 0
+          ? resultNotifications[resultNotifications.length - 1].created_at
+          : null;
 
-    const unreadCountQuery = `
+      const unreadCountQuery = `
             SELECT COUNT(*) as unread_count
             FROM notifications n
             WHERE n.workspace_member_id = $1 AND n.workspace_id = $2 AND n.is_read = false
         `;
 
-    const { rows: unreadRows } = await client.query(unreadCountQuery, [member.id, workspaceId]);
-    const unreadCount = parseInt(unreadRows[0].unread_count, 10);
+      const { rows: unreadRows } = await client.query(unreadCountQuery, [member.id, workspaceId]);
+      const unreadCount = parseInt(unreadRows[0].unread_count, 10);
 
-    const transformedNotifications = resultNotifications.map((notification) => ({
-      id: notification.id,
-      type: notification.type,
-      title: notification.title,
-      message: notification.message,
-      is_read: notification.is_read,
-      read_at: notification.read_at,
-      created_at: notification.created_at,
-      workspace_id: notification.workspace_id,
-      related_message_id: notification.related_message_id,
-      related_channel_id: notification.related_channel_id,
-      related_conversation_id: notification.related_conversation_id,
-      workspace_member_id: notification.workspace_member_id,
-      sender_workspace_member_id: notification.sender_workspace_member_id,
-      channel_name: notification.channel_name,
-    }));
+      const transformedNotifications = resultNotifications.map((notification) => ({
+        id: notification.id,
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        is_read: notification.is_read,
+        read_at: notification.read_at,
+        created_at: notification.created_at,
+        workspace_id: notification.workspace_id,
+        related_message_id: notification.related_message_id,
+        related_channel_id: notification.related_channel_id,
+        related_conversation_id: notification.related_conversation_id,
+        workspace_member_id: notification.workspace_member_id,
+        sender_workspace_member_id: notification.sender_workspace_member_id,
+        channel_name: notification.channel_name,
+      }));
 
-    return successResponse(
-      {
+      return successResponse({
         notifications: transformedNotifications,
         pagination: {
           limit,
@@ -157,29 +149,26 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           hasMore,
         },
         unread_count: unreadCount,
-      },
-      200,
-      corsHeaders,
-    );
-  } catch (error) {
-    console.error('Error fetching notifications:', error);
+      });
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
 
-    if (error instanceof z.ZodError) {
-      return errorResponse(
-        `Validation error: ${error.errors.map((e) => e.message).join(', ')}`,
-        400,
-        corsHeaders,
-      );
-    }
+      if (error instanceof z.ZodError) {
+        return errorResponse(
+          `Validation error: ${error.errors.map((e) => e.message).join(', ')}`,
+          400,
+        );
+      }
 
-    return errorResponse('Internal server error', 500, corsHeaders);
-  } finally {
-    if (client) {
-      try {
-        client.release();
-      } catch (releaseError) {
-        console.error('Error releasing database connection:', releaseError);
+      return errorResponse('Internal server error', 500);
+    } finally {
+      if (client) {
+        try {
+          client.release();
+        } catch (releaseError) {
+          console.error('Error releasing database connection:', releaseError);
+        }
       }
     }
-  }
-};
+  },
+);
