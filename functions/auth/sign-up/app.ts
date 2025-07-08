@@ -81,7 +81,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
       workspaceJoined = data;
 
-      // Create self-conversation for the user in the joined workspace
+      // Add user to workspace channels and create self-conversation
       if (workspaceJoined) {
         try {
           // Get the workspace member ID for the newly joined user
@@ -94,11 +94,34 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
           if (memberError || !workspaceMember) {
             console.error(
-              'Error fetching workspace member for self-conversation creation:',
+              'Error fetching workspace member for channel/conversation setup:',
               memberError,
             );
           } else {
-            // Create conversation
+            // Add user to the general channel
+            const { data: generalChannel, error: channelError } = await supabase
+              .from('channels')
+              .select('id')
+              .eq('workspace_id', workspaceJoined.id)
+              .eq('is_default', true)
+              .single();
+
+            if (channelError || !generalChannel) {
+              console.error('Error fetching general channel:', channelError);
+            } else {
+              const { error: channelMemberError } = await supabase.from('channel_members').insert({
+                workspace_member_id: workspaceMember.id,
+                channel_id: generalChannel.id,
+                role: 'member',
+                notifications_enabled: true,
+              });
+
+              if (channelMemberError) {
+                console.error('Error adding user to general channel:', channelMemberError);
+              }
+            }
+
+            // Create self-conversation
             const { data: conversation, error: conversationError } = await supabase
               .from('conversations')
               .insert({ workspace_id: workspaceJoined.id })
@@ -124,7 +147,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             }
           }
         } catch (error) {
-          console.error('Error in self-conversation creation process:', error);
+          console.error('Error in channel/conversation setup process:', error);
         }
       }
     } else if (isNewUser) {
