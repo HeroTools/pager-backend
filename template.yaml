@@ -116,8 +116,8 @@ Resources:
     CreateWorkspaceFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/workspaces/create
-            Handler: app.handler
+            CodeUri: functions/workspaces
+            Handler: create/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -134,14 +134,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - create/app.ts
 
     # GET WORKSPACES
     GetWorkspacesFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/workspaces/get
-            Handler: app.handler
+            CodeUri: functions/workspaces
+            Handler: get/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -158,14 +158,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - get/app.ts
 
     # GET WORKSPACE BY ID
     GetWorkspaceByIdFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/workspaces/get-by-id
-            Handler: app.handler
+            CodeUri: functions/workspaces
+            Handler: get-by-id/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -182,14 +182,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - get-by-id/app.ts
 
     # GET WORKSPACE FROM INVITE TOKEN
     GetWorkspaceFromInviteTokenFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/workspaces/get-from-invite-token
-            Handler: app.handler
+            CodeUri: functions/workspaces
+            Handler: get-from-invite-token/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -206,14 +206,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - get-from-invite-token/app.ts
 
     # UPDATE WORKSPACE
     UpdateWorkspaceFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/workspaces/update
-            Handler: app.handler
+            CodeUri: functions/workspaces
+            Handler: update/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -230,14 +230,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - update/app.ts
 
     # DELETE WORKSPACE
     DeleteWorkspaceFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/workspaces/delete
-            Handler: app.handler
+            CodeUri: functions/workspaces
+            Handler: delete/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -254,7 +254,7 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - delete/app.ts
 
     # SEND MESSAGE (UNIVERSAL)
     SendMessageFunction:
@@ -1674,8 +1674,8 @@ Resources:
     SemanticSearchFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/search/service
-            Handler: app.handler
+            CodeUri: functions/search
+            Handler: service/app.handler
             Runtime: nodejs20.x
             Timeout: 30
             MemorySize: 512
@@ -1691,7 +1691,7 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - service/app.ts
 
     # 4. Permissions
     EmbeddingOrchestratorInvokePermission:
