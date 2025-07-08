@@ -8,8 +8,8 @@ import { MessageWithUser } from '../../common/types';
 
 // Validation schemas
 const PathParamsSchema = z.object({
-    messageId: z.string().uuid(),
-    workspaceId: z.string().uuid(),
+    messageId: z.string().uuid('messageId is required'),
+    workspaceId: z.string().uuid('workspaceId is required'),
 });
 
 const QueryParamsSchema = z.object({

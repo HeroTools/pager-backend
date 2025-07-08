@@ -8,8 +8,8 @@ import type { ConversationMemberWithUser } from '../types';
 import type { MessageWithUser } from '../../common/types';
 
 const PathParamsSchema = z.object({
-    conversationId: z.string().uuid(),
-    workspaceId: z.string().uuid(),
+    conversationId: z.string().uuid('conversationId is required'),
+    workspaceId: z.string().uuid('workspaceId is required'),
 });
 
 const QueryParamsSchema = z.object({

@@ -11,8 +11,8 @@ const removeMembersRequestSchema = z.object({
 });
 
 const pathParamsSchema = z.object({
-    workspaceId: z.string().uuid(),
-    channelId: z.string().uuid(),
+    workspaceId: z.string().uuid('workspaceId is required'),
+    channelId: z.string().uuid('channelId is required'),
 });
 
 export const handler: APIGatewayProxyHandler = async (event, context) => {
