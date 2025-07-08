@@ -566,8 +566,8 @@ Resources:
     GetAllAvailableChannelsFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/channels/get-all-available
-            Handler: app.handler
+            CodeUri: functions/channels
+            Handler: get-all-available/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -584,14 +584,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - get-all-available/app.ts
 
     # GET USER'S CHANNELS
     GetUserChannelsFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/channels/get-user-channels
-            Handler: app.handler
+            CodeUri: functions/channels
+            Handler: get-user-channels/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -608,14 +608,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - get-user-channels/app.ts
 
     # ADD MEMBERS TO CHANNEL
     AddMembersToChannelFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/channels/add-members
-            Handler: app.handler
+            CodeUri: functions/channels
+            Handler: add-members/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -632,14 +632,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - add-members/app.ts
 
     # REMOVE MEMBERS FROM CHANNEL
     RemoveMembersFromChannelFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/channels/remove-members
-            Handler: app.handler
+            CodeUri: functions/channels
+            Handler: remove-members/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -656,14 +656,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - remove-members/app.ts
 
     # GET CHANNEL MESSAGES
     GetChannelMessagesFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/channels/get-messages
-            Handler: app.handler
+            CodeUri: functions/channels
+            Handler: get-messages/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -680,14 +680,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - get-messages/app.ts
 
     # GET CHANNEL MEMBERS
     GetChannelMembersFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/channels/get-members
-            Handler: app.handler
+            CodeUri: functions/channels
+            Handler: get-members/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -704,14 +704,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - get-members/app.ts
 
     # CREATE CHANNEL
     CreateChannelFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/channels/create
-            Handler: app.handler
+            CodeUri: functions/channels
+            Handler: create/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -728,14 +728,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - create/app.ts
 
     # GET CHANNEL BY ID
     GetChannelByIdFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/channels/get-by-id
-            Handler: app.handler
+            CodeUri: functions/channels
+            Handler: get-by-id/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -752,14 +752,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - get-by-id/app.ts
 
     # UPDATE CHANNEL
     UpdateChannelFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/channels/update
-            Handler: app.handler
+            CodeUri: functions/channels
+            Handler: update/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -776,14 +776,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - update/app.ts
 
     # DELETE CHANNEL
     DeleteChannelFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/channels/delete
-            Handler: delete-channel.handler
+            CodeUri: functions/channels
+            Handler: delete/delete-channel.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -813,14 +813,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - delete-channel.ts
+                    - delete/delete-channel.ts
 
     # MESSAGE CLEANUP - Background job only (no API)
     MessageCleanupFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/channels/delete
-            Handler: message-cleanup.handler
+            CodeUri: functions/channels
+            Handler: delete/message-cleanup.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -831,7 +831,7 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - message-cleanup.ts
+                    - delete/message-cleanup.ts
 
     # CREATE OR GET CONVERSATION
     CreateOrGetConversationFunction:
@@ -1593,8 +1593,8 @@ Resources:
     EmbeddingOrchestratorFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/embeddings/service
-            Handler: orchestrator.handler
+            CodeUri: functions/embeddings
+            Handler: orchestrator/app.handler
             Runtime: nodejs20.x
             Timeout: 60
             MemorySize: 512
@@ -1624,13 +1624,13 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - orchestrator.ts
+                    - orchestrator/app.ts
 
     EmbeddingWorkerFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/embeddings/service
-            Handler: worker.handler
+            CodeUri: functions/embeddings
+            Handler: worker/app.handler
             Runtime: nodejs20.x
             Timeout: 300 # 5 minutes for processing
             MemorySize: 1024 # More memory for vector operations
@@ -1669,7 +1669,7 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - worker.ts
+                    - worker/app.ts
 
     SemanticSearchFunction:
         Type: AWS::Serverless::Function

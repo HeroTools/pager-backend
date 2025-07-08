@@ -1,10 +1,10 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { z, ZodError } from 'zod';
 import { PoolClient } from 'pg';
-import { getUserIdFromToken } from './helpers/auth';
-import { getWorkspaceMember } from './helpers/get-member';
-import { successResponse, errorResponse, setCorsHeaders } from './utils/response';
-import dbPool from './utils/create-db-pool';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { getWorkspaceMember } from '../../common/helpers/get-member';
+import { successResponse, errorResponse, setCorsHeaders } from '../../common/utils/response';
+import dbPool from '../../common/utils/create-db-pool';
 
 const removeMembersRequestSchema = z.object({
     channelMemberIds: z.string().array().min(1, 'channelMemberIds array cannot be empty'),
@@ -102,7 +102,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
 
         return successResponse(
             {
-                success: true
+                success: true,
             },
             200,
             corsHeaders,

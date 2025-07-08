@@ -5,7 +5,10 @@
   "author": "Zach Bresler",
   "license": "MIT",
   "dependencies": {
+    "@aws-sdk/client-lambda": "^3.840.0",
+    "@aws-sdk/client-sqs": "^3.840.0",
     "@supabase/supabase-js": "^2.50.0",
+    "openai": "^5.8.2",
     "pg": "^8.16.2",
     "zod": "^3.25.67"
   },
