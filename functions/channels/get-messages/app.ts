@@ -1,9 +1,11 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
-import dbPool from './utils/create-db-pool';
-import { getUserIdFromToken } from './helpers/auth';
-import { successResponse, errorResponse } from './utils/response';
+import dbPool from '../../common/utils/create-db-pool';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { successResponse, errorResponse } from '../../common/utils/response';
+import type { ChannelMemberWithUser } from '../types';
+import type { MessageWithUser } from '../../common/types';
 
 // Validation schemas
 const PathParamsSchema = z.object({
@@ -264,7 +266,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         const nextCursor = hasMore && slice.length > 0 ? slice[slice.length - 1].id : null;
 
         // Reactions grouping
-        const messages = slice.map((msg: any) => {
+        const messages: MessageWithUser[] = slice.map((msg: any) => {
             const map: Record<string, any> = {};
             (msg.reactions || []).forEach((r: any) => {
                 if (!map[r.value]) {
@@ -277,7 +279,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         });
 
         // Channel members
-        let channelMembers: any[] = [];
+        let channelMembers: ChannelMemberWithUser[] = [];
         if (include_members === 'true') {
             const membersQuery = `
         SELECT
@@ -307,6 +309,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
                 joined_at: m.joined_at,
                 notifications_enabled: m.notifications_enabled,
                 last_read_message_id: m.last_read_message_id,
+                channel_id: channelId,
                 user: {
                     id: m.user_id,
                     name: m.user_name,
