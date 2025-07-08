@@ -1350,8 +1350,8 @@ Resources:
     ToggleReactionFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/reactions/toggle
-            Handler: app.handler
+            CodeUri: functions/reactions
+            Handler: toggle/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1368,14 +1368,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - toggle/app.ts
 
     # GET REACTIONS
     GetReactionsFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/reactions/get
-            Handler: app.handler
+            CodeUri: functions/reactions
+            Handler: get/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1392,14 +1392,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - get/app.ts
 
     # REMOVE REACTION
     RemoveReactionFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/reactions/remove
-            Handler: app.handler
+            CodeUri: functions/reactions
+            Handler: remove/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1416,14 +1416,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - remove/app.ts
 
     # GET USER REACTIONS
     GetUserReactionsFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/reactions/user-reactions
-            Handler: app.handler
+            CodeUri: functions/reactions
+            Handler: user-reactions/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1440,14 +1440,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - user-reactions/app.ts
 
     # GET REACTION STATS
     GetReactionStatsFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/reactions/stats
-            Handler: app.handler
+            CodeUri: functions/reactions
+            Handler: stats/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1464,13 +1464,13 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - stats/app.ts
 
     InitiateGoogleAuthFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/auth/google-auth
-            Handler: app.handler
+            CodeUri: functions/auth
+            Handler: google-auth/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1491,7 +1491,7 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - google-auth/app.ts
 
     # GENERATE PRE-SIGNED URL
     GeneratePresignedUrlFunction:
