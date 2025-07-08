@@ -1,10 +1,11 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
 import { getUserIdFromToken } from '../../common/helpers/auth';
-import { successResponse, errorResponse, setCorsHeaders } from '../../common/utils/response';
+import { successResponse, errorResponse } from '../../common/utils/response';
 import dbPool from '../../common/utils/create-db-pool';
 import { getWorkspaceMember } from '../../common/helpers/get-member';
 import { verifyMessageInWorkspace } from './helpers/verify-message';
+import { withCors } from '../../common/utils/cors';
 
 const PathParamsSchema = z.object({
   workspaceId: z.string().uuid('Invalid workspace ID format'),
@@ -40,92 +41,82 @@ interface ReactionResponse {
   error?: string;
 }
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  const origin = event.headers.Origin || event.headers.origin;
-  const headers = setCorsHeaders(origin, 'POST');
+export const handler = withCors(
+  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    let client;
 
-  // Handle preflight
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers,
-      body: '',
-    };
-  }
+    try {
+      const pathParams = PathParamsSchema.parse(event.pathParameters);
+      const { workspaceId, messageId } = pathParams;
 
-  let client;
+      const userId = await getUserIdFromToken(event.headers.Authorization);
+      if (!userId) {
+        return errorResponse('Unauthorized', 401);
+      }
 
-  try {
-    const pathParams = PathParamsSchema.parse(event.pathParameters);
-    const { workspaceId, messageId } = pathParams;
+      client = await dbPool.connect();
 
-    const userId = await getUserIdFromToken(event.headers.Authorization);
-    if (!userId) {
-      return errorResponse('Unauthorized', 401, headers);
+      const workspaceMember = await getWorkspaceMember(client, workspaceId, userId);
+      if (!workspaceMember) {
+        return errorResponse('User not found in workspace', 403);
+      }
+
+      if (event.httpMethod !== 'POST') {
+        return errorResponse('Method not allowed', 405);
+      }
+
+      if (!event.body) {
+        return errorResponse('Request body is required', 400);
+      }
+
+      const request = ReactionRequestSchema.parse(JSON.parse(event.body));
+      const { action } = request;
+
+      const messageExists = await verifyMessageInWorkspace(client, messageId, workspaceId);
+      if (!messageExists) {
+        return errorResponse('Message not found in workspace', 404);
+      }
+
+      let response: ReactionResponse;
+
+      if (action === 'add') {
+        response = await addReaction(client, {
+          ...request,
+          workspaceId,
+          workspaceMemberId: workspaceMember.id,
+          messageId,
+        });
+      } else {
+        response = await removeReaction(client, {
+          ...request,
+          workspaceId,
+          workspaceMemberId: workspaceMember.id,
+          messageId,
+        });
+      }
+
+      return successResponse(response, 200);
+    } catch (error) {
+      console.error('Lambda error:', error);
+
+      if (error instanceof z.ZodError) {
+        const errorMessages = error.errors
+          .map((err) => `${err.path.join('.')}: ${err.message}`)
+          .join(', ');
+        return errorResponse(`Validation error: ${errorMessages}`, 400);
+      }
+      if (error instanceof SyntaxError) {
+        return errorResponse('Invalid JSON in request body', 400);
+      }
+
+      return errorResponse('Internal server error', 500);
+    } finally {
+      if (client) {
+        client.release();
+      }
     }
-
-    client = await dbPool.connect();
-
-    const workspaceMember = await getWorkspaceMember(client, workspaceId, userId);
-    if (!workspaceMember) {
-      return errorResponse('User not found in workspace', 403, headers);
-    }
-
-    if (event.httpMethod !== 'POST') {
-      return errorResponse('Method not allowed', 405, headers);
-    }
-
-    if (!event.body) {
-      return errorResponse('Request body is required', 400, headers);
-    }
-
-    const request = ReactionRequestSchema.parse(JSON.parse(event.body));
-    const { action } = request;
-
-    const messageExists = await verifyMessageInWorkspace(client, messageId, workspaceId);
-    if (!messageExists) {
-      return errorResponse('Message not found in workspace', 404, headers);
-    }
-
-    let response: ReactionResponse;
-
-    if (action === 'add') {
-      response = await addReaction(client, {
-        ...request,
-        workspaceId,
-        workspaceMemberId: workspaceMember.id,
-        messageId,
-      });
-    } else {
-      response = await removeReaction(client, {
-        ...request,
-        workspaceId,
-        workspaceMemberId: workspaceMember.id,
-        messageId,
-      });
-    }
-
-    return successResponse(response, 200, headers);
-  } catch (error) {
-    console.error('Lambda error:', error);
-
-    if (error instanceof z.ZodError) {
-      const errorMessages = error.errors
-        .map((err) => `${err.path.join('.')}: ${err.message}`)
-        .join(', ');
-      return errorResponse(`Validation error: ${errorMessages}`, 400, headers);
-    }
-    if (error instanceof SyntaxError) {
-      return errorResponse('Invalid JSON in request body', 400, headers);
-    }
-
-    return errorResponse('Internal server error', 500, headers);
-  } finally {
-    if (client) {
-      client.release();
-    }
-  }
-};
+  },
+);
 
 async function addReaction(
   client: any,

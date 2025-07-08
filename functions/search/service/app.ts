@@ -2,10 +2,11 @@ import { APIGatewayProxyHandler } from 'aws-lambda';
 import OpenAI from 'openai';
 import { registerTypes, toSql } from 'pgvector/pg';
 import { z } from 'zod';
-import { successResponse, errorResponse, setCorsHeaders } from '../../common/utils/response';
+import { successResponse, errorResponse } from '../../common/utils/response';
 import dbPool from '../../common/utils/create-db-pool';
 import { getUserIdFromToken } from '../../common/helpers/auth';
 import { SearchRequest, SearchResponse, SearchResult } from '../types';
+import { withCors } from '../../common/utils/cors';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-3-small';
@@ -13,7 +14,7 @@ const CHAT_MODEL = process.env.CHAT_MODEL || 'gpt-4.1';
 const SEARCH_LIMIT = parseInt(process.env.SEARCH_LIMIT || '20');
 const SIMILARITY_THRESHOLD = parseFloat(process.env.SIMILARITY_THRESHOLD || '0.6');
 
-// --- Zod schema for our tool’s output ---
+// --- Zod schema for our tool's output ---
 const ReferenceSearchSchema = z.object({
   answer: z.string().describe('Markdown answer with inline citations [1],[2],…'),
   references: z.array(
@@ -63,14 +64,7 @@ const referenceSearchTool = [
   } as OpenAI.Responses.Tool,
 ];
 
-export const handler: APIGatewayProxyHandler = async (event, _ctx) => {
-  const origin = event.headers.Origin || event.headers.origin;
-  const corsHeaders = setCorsHeaders(origin, 'POST');
-
-  if (event.httpMethod === 'OPTIONS') {
-    return successResponse({ message: 'OK' }, 200, corsHeaders);
-  }
-
+export const handler: APIGatewayProxyHandler = withCors(async (event, _ctx) => {
   const start = Date.now();
 
   try {
@@ -80,13 +74,12 @@ export const handler: APIGatewayProxyHandler = async (event, _ctx) => {
     const { query, limit = SEARCH_LIMIT, includeThreads = true, channelId, conversationId } = body;
 
     if (!query?.trim()) {
-      return errorResponse('Search query is required', 400, corsHeaders);
+      return errorResponse('Search query is required', 400);
     }
     if (!workspaceId || !userId) {
-      return errorResponse('Workspace ID and User ID are required', 400, corsHeaders);
+      return errorResponse('Workspace ID and User ID are required', 400);
     }
 
-    // 1) Embed
     const embedding = await openai.embeddings
       .create({
         model: EMBEDDING_MODEL,
@@ -96,7 +89,6 @@ export const handler: APIGatewayProxyHandler = async (event, _ctx) => {
       })
       .then((r) => r.data[0].embedding);
 
-    // 2) Vector search
     const results = await searchMessages({
       embedding,
       workspaceId,
@@ -107,7 +99,6 @@ export const handler: APIGatewayProxyHandler = async (event, _ctx) => {
       conversationId,
     });
 
-    // 3) Build the system + user messages for the Responses API
     const formattedDocs = results
       .map(
         (r, i) => `${i + 1}. [${r.messageId}] ${r.content} ${r.isThread ? '(Part of thread)' : ''}`,
@@ -143,7 +134,6 @@ export const handler: APIGatewayProxyHandler = async (event, _ctx) => {
       ],
     };
 
-    // 4) Invoke Responses API with our single tool
     const resp = await openai.responses.create({
       model: CHAT_MODEL,
       input: [systemMessage, userMessage],
@@ -157,12 +147,9 @@ export const handler: APIGatewayProxyHandler = async (event, _ctx) => {
       throw new Error('Model did not invoke reference_search');
     }
 
-    // 5) Parse & validate
     const parsed = ReferenceSearchSchema.parse(JSON.parse(call.arguments));
 
     console.log('Parsed:', parsed);
-
-    // 6) Return everything
     const executionTime = Date.now() - start;
     const out: SearchResponse = {
       answer: parsed.answer,
@@ -173,12 +160,12 @@ export const handler: APIGatewayProxyHandler = async (event, _ctx) => {
       executionTime,
     };
 
-    return successResponse(out, 200, corsHeaders);
+    return successResponse(out, 200);
   } catch (err: any) {
     console.error('Search+Reference error:', err);
-    return errorResponse(err.message || 'Internal error', 500, corsHeaders);
+    return errorResponse(err.message || 'Internal error', 500);
   }
-};
+});
 
 async function searchMessages(params: {
   embedding: number[];
