@@ -9,8 +9,8 @@ import type { MessageWithUser } from '../../common/types';
 
 // Validation schemas
 const PathParamsSchema = z.object({
-    channelId: z.string().uuid(),
-    workspaceId: z.string().uuid(),
+    channelId: z.string().uuid('channelId is required'),
+    workspaceId: z.string().uuid('workspaceId is required'),
 });
 
 const QueryParamsSchema = z.object({

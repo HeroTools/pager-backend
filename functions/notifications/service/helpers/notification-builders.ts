@@ -1,5 +1,5 @@
 import { PoolClient } from 'pg';
-import { Notification } from '../types';
+import { Notification } from '../../types';
 import {
     getChannelName,
     getOriginalMessageAuthor,
