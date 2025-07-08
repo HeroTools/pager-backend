@@ -1,8 +1,8 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { getUserIdFromToken } from './helpers/auth';
-import { errorResponse, successResponse } from './utils/response';
-import dbPool from './utils/create-db-pool';
 import { PoolClient } from 'pg';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import dbPool from '../../common/utils/create-db-pool';
 
 interface CreateWorkspaceBody {
     name: string;

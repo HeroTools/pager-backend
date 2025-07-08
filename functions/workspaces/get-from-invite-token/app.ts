@@ -1,7 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
-import dbPool from './utils/create-db-pool';
-import { errorResponse, successResponse, setCorsHeaders } from './utils/response';
+import dbPool from '../../common/utils/create-db-pool';
+import { errorResponse, successResponse, setCorsHeaders } from '../../common/utils/response';
 
 interface WorkspaceInfo {
     name: string;

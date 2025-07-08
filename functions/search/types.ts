@@ -95,3 +95,39 @@ export interface Database {
         Enums: {};
     };
 }
+
+export interface SearchRequest {
+    query: string;
+    workspaceId: string;
+    userId: string;
+    limit?: number;
+    includeThreads?: boolean;
+    channelId?: string;
+    conversationId?: string;
+}
+
+export interface SearchResult {
+    messageId: string;
+    content: string;
+    similarity: number;
+    timestamp: string;
+    authorName: string;
+    authorImage?: string;
+    channelId?: string;
+    channelName?: string;
+    conversationId?: string;
+    isThread: boolean;
+    parentMessageId?: string;
+    threadSummary?: string;
+    contextType: 'channel' | 'conversation' | 'thread';
+    contextMessageIds: string[];
+}
+
+export interface SearchResponse {
+    answer: string;
+    references: { messageId: string; index: number }[];
+    results: SearchResult[];
+    totalCount: number;
+    query: string;
+    executionTime: number;
+}
