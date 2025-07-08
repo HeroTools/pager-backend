@@ -22,61 +22,18 @@ Globals:
     MemorySize: 512
     Environment:
       Variables:
-        OPENAI_API_KEY: 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
-        GOOGLE_CLIENT_ID: 1092811869589-gmlbvma5qliucqscng5vbqbqh2iqe8js.apps.googleusercontent.com
-        GOOGLE_CLIENT_SECRET: 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
-        SUPABASE_URL: !If
-          - IsDev
-          - https://ypkobnsdgcclemmiswkj.supabase.co
-          - !If
-            - IsProd
-            - https://ypkobnsdgcclemmiswkj.supabase.co
-            - https://ypkobnsdgcclemmiswkj.supabase.co
-        SUPABASE_ANON_KEY: !If
-          - IsDev
-          - eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwa29ibnNkZ2NjbGVtbWlzd2tqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwNjQ3ODIsImV4cCI6MjA2NTY0MDc4Mn0.APCGppNcajhevHsY8P5G_Bw2uUR89zZaphzByssPDV0
-          - !If
-            - IsProd
-            - eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwa29ibnNkZ2NjbGVtbWlzd2tqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwNjQ3ODIsImV4cCI6MjA2NTY0MDc4Mn0.APCGppNcajhevHsY8P5G_Bw2uUR89zZaphzByssPDV0
-            - eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwa29ibnNkZ2NjbGVtbWlzd2tqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwNjQ3ODIsImV4cCI6MjA2NTY0MDc4Mn0.APCGppNcajhevHsY8P5G_Bw2uUR89zZaphzByssPDV0
-        SUPABASE_SERVICE_ROLE_KEY: !If
-          - IsDev
-          - eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwa29ibnNkZ2NjbGVtbWlzd2tqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDA2NDc4MiwiZXhwIjoyMDY1NjQwNzgyfQ.SzgGzzjXDxNluavuF5JhVsYdK3e37FT-GHxuA_qXt68
-          - !If
-            - IsProd
-            - eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwa29ibnNkZ2NjbGVtbWlzd2tqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDA2NDc4MiwiZXhwIjoyMDY1NjQwNzgyfQ.SzgGzzjXDxNluavuF5JhVsYdK3e37FT-GHxuA_qXt68
-            - eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwa29ibnNkZ2NjbGVtbWlzd2tqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDA2NDc4MiwiZXhwIjoyMDY1NjQwNzgyfQ.SzgGzzjXDxNluavuF5JhVsYdK3e37FT-GHxuA_qXt68
-        PG_USER: !If
-          - IsDev
-          - postgres.ypkobnsdgcclemmiswkj
-          - !If
-            - IsProd
-            - postgres.ypkobnsdgcclemmiswkj
-            - postgres.ypkobnsdgcclemmiswkj
-        PG_HOST: !If
-          - IsDev
-          - aws-0-us-east-2.pooler.supabase.com
-          - !If
-            - IsProd
-            - aws-0-us-east-2.pooler.supabase.com
-            - aws-0-us-east-2.pooler.supabase.com
-        PG_DATABASE: postgres
-        PG_PASSWORD: !If
-          - IsDev
-          - 6wR2m#!nCgaR!K@27Ca%c
-          - !If
-            - IsProd
-            - 6wR2m#!nCgaR!K@27Ca%c
-            - 6wR2m#!nCgaR!K@27Ca%c
-        PG_PORT: 6543
-        APP_URL_BASE: !If
-          - IsDev
-          - 'http://localhost:3000'
-          - !If
-            - IsProd
-            - 'https://app.askbex.ai'
-            - 'https://app.askbex.ai'
-        ALLOWED_ORIGINS: 'https://app.askbex.ai,http://localhost:3000,https://unowned-dev.vercel.app,https://unowned-frontend-*.vercel.app'
+        OPENAI_API_KEY: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/openai-api-key:}}'
+        GOOGLE_CLIENT_ID: !Sub '{{resolve:ssm:/unowned/${StageName}/google-client-id:}}'
+        SUPABASE_URL: !Sub '{{resolve:ssm:/unowned/${StageName}/supabase-url}}'
+        SUPABASE_ANON_KEY: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/supabase-anon-key:}}'
+        SUPABASE_SERVICE_ROLE_KEY: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/supabase-service-role-key:}}'
+        PG_USER: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-user:}}'
+        PG_HOST: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-host:}}'
+        PG_DATABASE: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-database:}}'
+        PG_PASSWORD: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/pg-password:}}'
+        PG_PORT: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-port:}}'
+        FRONTEND_URL: !Sub '{{resolve:ssm:/unowned/${StageName}/frontend-url:}}'
+        ALLOWED_ORIGINS: !Sub '{{resolve:ssm:/unowned/${StageName}/allowed-origins:}}'
   Api:
     Cors:
       AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
@@ -1071,9 +1028,6 @@ Resources:
       Runtime: nodejs22.x
       Architectures:
         - arm64
-      Environment:
-        Variables:
-          FRONTEND_URL: https://localhost:3000
       Events:
         SignUp:
           Type: Api
@@ -1122,9 +1076,6 @@ Resources:
       Runtime: nodejs22.x
       Architectures:
         - arm64
-      Environment:
-        Variables:
-          FRONTEND_URL: https://localhost:3000
       Events:
         GetInviteLink:
           Type: Api
@@ -1245,9 +1196,6 @@ Resources:
       Runtime: nodejs22.x
       Architectures:
         - arm64
-      Environment:
-        Variables:
-          FRONTEND_URL: https://localhost:3000
       Events:
         ResetPasswordRequest:
           Type: Api
@@ -1464,9 +1412,6 @@ Resources:
       Architectures:
         - arm64
       Tracing: Active
-      Environment:
-        Variables:
-          FRONTEND_URL: https://localhost:3000
       Events:
         InitiateGoogleAuth:
           Type: Api
