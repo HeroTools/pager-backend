@@ -1,4 +1,4 @@
-import { supabase } from '../utils/supabase-client';
+import { supabase } from '../../common/utils/supabase-client';
 
 const getWorkspaceMember = async (workspaceId: string, userId: string) => {
     const { data: member } = await supabase
