@@ -260,8 +260,8 @@ Resources:
     SendMessageFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/messages/send
-            Handler: app.handler
+            CodeUri: functions/messages
+            Handler: send/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -297,14 +297,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - send/app.ts
 
     # GET MESSAGE REPLIES
     GetMessageRepliesFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/messages/get-message-replies
-            Handler: app.handler
+            CodeUri: functions/messages
+            Handler: get-message-replies/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -321,14 +321,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - get-message-replies/app.ts
 
     # Typing Indicator
     TypingIndicatorFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/messages/typing-indicator
-            Handler: app.handler
+            CodeUri: functions/messages
+            Handler: typing-indicator/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -351,14 +351,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - typing-indicator/app.ts
 
     # GET MESSAGES
     GetMessagesFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/messages/get
-            Handler: app.handler
+            CodeUri: functions/messages
+            Handler: get/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -375,14 +375,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - get/app.ts
 
     # GET MESSAGE BY ID
     GetMessageByIdFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/messages/get-by-id
-            Handler: app.handler
+            CodeUri: functions/messages
+            Handler: get-by-id/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -399,14 +399,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - get-by-id/app.ts
 
     # UPDATE MESSAGE
     UpdateMessageFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/messages/update
-            Handler: app.handler
+            CodeUri: functions/messages
+            Handler: update/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -423,14 +423,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - update/app.ts
 
     # DELETE MESSAGE
     DeleteMessageFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/messages/delete
-            Handler: app.handler
+            CodeUri: functions/messages
+            Handler: delete/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -447,7 +447,7 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - delete/app.ts
 
     # NOTIFICATION SERVICE
     NotificationServiceFunction:
