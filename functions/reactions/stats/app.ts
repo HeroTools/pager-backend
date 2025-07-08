@@ -3,81 +3,84 @@ import { getUserIdFromToken } from '../../common/helpers/auth';
 import { supabase } from '../../common/utils/supabase-client';
 import { successResponse, errorResponse } from '../../common/utils/response';
 import { getMember } from '../../common/helpers/get-member';
+import { withCors } from '../../common/utils/cors';
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  try {
-    const userId = await getUserIdFromToken(event.headers.Authorization);
+export const handler = withCors(
+  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    try {
+      const userId = await getUserIdFromToken(event.headers.Authorization);
 
-    if (!userId) {
-      return errorResponse('Unauthorized', 401);
-    }
+      if (!userId) {
+        return errorResponse('Unauthorized', 401);
+      }
 
-    const messageId = event.pathParameters?.messageId;
+      const messageId = event.pathParameters?.messageId;
 
-    if (!messageId) {
-      return errorResponse('Message ID is required', 400);
-    }
+      if (!messageId) {
+        return errorResponse('Message ID is required', 400);
+      }
 
-    // Get message to verify access
-    const { data: message, error: messageError } = await supabase
-      .from('messages')
-      .select('workspace_id')
-      .eq('id', messageId)
-      .single();
+      // Get message to verify access
+      const { data: message, error: messageError } = await supabase
+        .from('messages')
+        .select('workspace_id')
+        .eq('id', messageId)
+        .single();
 
-    if (messageError || !message) {
-      return errorResponse('Message not found', 404);
-    }
+      if (messageError || !message) {
+        return errorResponse('Message not found', 404);
+      }
 
-    // Verify user is a member of the workspace
-    const member = await getMember(message.workspace_id, userId);
+      // Verify user is a member of the workspace
+      const member = await getMember(message.workspace_id, userId);
 
-    if (!member) {
-      return errorResponse('Not a member of this workspace', 403);
-    }
+      if (!member) {
+        return errorResponse('Not a member of this workspace', 403);
+      }
 
-    // Get reaction statistics
-    const { data: stats, error } = await supabase.rpc('get_reaction_stats', {
-      message_id_param: messageId,
-    });
-
-    if (error) {
-      // Fallback to manual aggregation if stored procedure doesn't exist
-      const { data: reactions } = await supabase
-        .from('reactions')
-        .select('value, member_id')
-        .eq('message_id', messageId);
-
-      const reactionStats = (reactions || []).reduce((acc: any, reaction) => {
-        if (!acc[reaction.value]) {
-          acc[reaction.value] = {
-            value: reaction.value,
-            count: 0,
-            memberIds: [],
-          };
-        }
-        acc[reaction.value].count += 1;
-        acc[reaction.value].memberIds.push(reaction.member_id);
-        return acc;
-      }, {});
-
-      const totalReactions = Object.values(reactionStats).reduce(
-        (sum: number, stat: any) => sum + stat.count,
-        0,
-      );
-
-      return successResponse({
-        reactions: Object.values(reactionStats),
-        totalCount: totalReactions,
-        userReacted: Object.values(reactionStats).some((stat: any) =>
-          stat.memberIds.includes(member.id),
-        ),
+      // Get reaction statistics
+      const { data: stats, error } = await supabase.rpc('get_reaction_stats', {
+        message_id_param: messageId,
       });
-    }
 
-    return successResponse(stats || []);
-  } catch (error) {
-    console.error('Error getting reaction stats:', error);
-    return errorResponse('Internal server error', 500);
-  }
-};
+      if (error) {
+        // Fallback to manual aggregation if stored procedure doesn't exist
+        const { data: reactions } = await supabase
+          .from('reactions')
+          .select('value, member_id')
+          .eq('message_id', messageId);
+
+        const reactionStats = (reactions || []).reduce((acc: any, reaction) => {
+          if (!acc[reaction.value]) {
+            acc[reaction.value] = {
+              value: reaction.value,
+              count: 0,
+              memberIds: [],
+            };
+          }
+          acc[reaction.value].count += 1;
+          acc[reaction.value].memberIds.push(reaction.member_id);
+          return acc;
+        }, {});
+
+        const totalReactions = Object.values(reactionStats).reduce(
+          (sum: number, stat: any) => sum + stat.count,
+          0,
+        );
+
+        return successResponse({
+          reactions: Object.values(reactionStats),
+          totalCount: totalReactions,
+          userReacted: Object.values(reactionStats).some((stat: any) =>
+            stat.memberIds.includes(member.id),
+          ),
+        });
+      }
+
+      return successResponse(stats || []);
+    } catch (error) {
+      console.error('Error getting reaction stats:', error);
+      return errorResponse('Internal server error', 500);
+    }
+  },
+);
