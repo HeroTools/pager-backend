@@ -1,5 +1,5 @@
 import { PoolClient } from 'pg';
-import { CreatedNotification, Notification } from '../types';
+import { CreatedNotification, Notification } from '../../types';
 
 /**
  * Insert notifications into database
