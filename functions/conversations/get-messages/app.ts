@@ -1,10 +1,10 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
-import dbPool from './utils/create-db-pool';
-import { getUserIdFromToken } from './helpers/auth';
-import { successResponse, errorResponse } from './utils/response';
-import { MessageWithUser, ConversationMemberWithUser } from './types';
+import dbPool from '../../common/utils/create-db-pool';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { successResponse, errorResponse } from '../../common/utils/response';
+import { MessageWithUser, ConversationMemberWithUser } from '../types';
 
 const PathParamsSchema = z.object({
     conversationId: z.string().uuid(),
