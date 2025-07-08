@@ -56,9 +56,22 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         password,
         options: { data: { name } },
       });
-      if (signUpError || !signUpData.user || !signUpData.session) {
+      if (signUpError || !signUpData.user) {
         return errorResponse(signUpError?.message || 'Failed to create user', 400);
       }
+
+      // Handle the case where session is null due to email confirmation requirement
+      if (!signUpData.session) {
+        return successResponse(
+          {
+            message: 'Registration successful. Please check your email to confirm your account.',
+            user: signUpData.user,
+            requires_email_confirmation: true,
+          },
+          201,
+        );
+      }
+
       authResult = signUpData;
     }
 
