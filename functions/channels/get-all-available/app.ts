@@ -5,26 +5,26 @@ import dbPool from '../../common/utils/create-db-pool';
 import { successResponse, errorResponse } from '../../common/utils/response';
 
 export const handler: APIGatewayProxyHandler = async (event, context) => {
-    context.callbackWaitsForEmptyEventLoop = false;
-    let client;
+  context.callbackWaitsForEmptyEventLoop = false;
+  let client;
 
-    try {
-        const userId = await getUserIdFromToken(event.headers.Authorization);
-        if (!userId) {
-            return errorResponse('Unauthorized', 401);
-        }
+  try {
+    const userId = await getUserIdFromToken(event.headers.Authorization);
+    if (!userId) {
+      return errorResponse('Unauthorized', 401);
+    }
 
-        const workspaceId = event.pathParameters?.workspaceId;
-        if (!workspaceId) {
-            return errorResponse('Workspace ID is required', 400);
-        }
+    const workspaceId = event.pathParameters?.workspaceId;
+    if (!workspaceId) {
+      return errorResponse('Workspace ID is required', 400);
+    }
 
-        const member = await getMember(workspaceId, userId);
-        if (!member) {
-            return errorResponse('Not a member of this workspace', 403);
-        }
+    const member = await getMember(workspaceId, userId);
+    if (!member) {
+      return errorResponse('Not a member of this workspace', 403);
+    }
 
-        const query = `
+    const query = `
             SELECT
                 c.id,
                 c.name,
@@ -70,38 +70,38 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
             ORDER BY c.created_at ASC
         `;
 
-        client = await dbPool.connect();
-        const result = await client.query(query, [workspaceId, member.id]);
+    client = await dbPool.connect();
+    const result = await client.query(query, [workspaceId, member.id]);
 
-        const channels = result.rows.map((row) => ({
-            id: row.id,
-            name: row.name,
-            workspace_id: row.workspace_id,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-            channel_type: row.channel_type,
-            description: row.description,
-            settings: row.settings,
-            is_member: row.is_member,
-            member_count: Number(row.member_count),
-            member_info: row.is_member
-                ? {
-                      id: row.member_id,
-                      role: row.member_role,
-                      joined_at: row.member_joined_at,
-                      notifications_enabled: row.member_notifications_enabled,
-                      last_read_message_id: row.member_last_read_message_id,
-                  }
-                : null,
-        }));
+    const channels = result.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      workspace_id: row.workspace_id,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      channel_type: row.channel_type,
+      description: row.description,
+      settings: row.settings,
+      is_member: row.is_member,
+      member_count: Number(row.member_count),
+      member_info: row.is_member
+        ? {
+            id: row.member_id,
+            role: row.member_role,
+            joined_at: row.member_joined_at,
+            notifications_enabled: row.member_notifications_enabled,
+            last_read_message_id: row.member_last_read_message_id,
+          }
+        : null,
+    }));
 
-        return successResponse(channels);
-    } catch (error) {
-        console.error('Error getting available channels:', error);
-        return errorResponse('Internal server error', 500);
-    } finally {
-        if (client) {
-            client.release();
-        }
+    return successResponse(channels);
+  } catch (error) {
+    console.error('Error getting available channels:', error);
+    return errorResponse('Internal server error', 500);
+  } finally {
+    if (client) {
+      client.release();
     }
+  }
 };
