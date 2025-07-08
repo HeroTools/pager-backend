@@ -1,13 +1,13 @@
 {
-  "name": "login",
+  "name": "unowned-backend",
   "version": "1.0.0",
-  "description": "hello world sample for NodeJS",
-  "main": "app.ts",
-  "repository": "https://github.com/aws/aws-sam-cli-app-templates/tree/master/nodejs18.x/hello-ts-pt",
+  "description": "Unowned backend",
   "author": "Zach Bresler",
   "license": "MIT",
   "dependencies": {
-    "@supabase/supabase-js": "^2.50.0"
+    "@supabase/supabase-js": "^2.50.0",
+    "pg": "^8.16.2",
+    "zod": "^3.25.67"
   },
   "scripts": {
     "unit": "jest",
