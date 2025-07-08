@@ -1,14 +1,14 @@
 import { PoolClient } from 'pg';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
-import dbPool from './utils/create-db-pool';
-import { getUserIdFromToken } from './helpers/auth';
-import { errorResponse, setCorsHeaders, successResponse } from './utils/response';
-import { broadcastMessage, broadcastTypingStatus } from './helpers/broadcasting';
-import { CompleteMessage } from './types';
-import { invokeLambdaFunction } from './helpers/invoke-lambda';
 import { LambdaClient } from '@aws-sdk/client-lambda';
-import { deltaToMarkdown, deltaToPlainText } from './helpers/quill-delta-converters';
+import dbPool from '../../common/utils/create-db-pool';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { errorResponse, setCorsHeaders, successResponse } from '../../common/utils/response';
+import { broadcastMessage, broadcastTypingStatus } from '../helpers/broadcasting';
+import { CompleteMessage } from '../types';
+import { invokeLambdaFunction } from '../../common/helpers/invoke-lambda';
+import { deltaToMarkdown, deltaToPlainText } from '../helpers/quill-delta-converters';
 
 const SendMessageSchema = z
     .object({
@@ -26,7 +26,7 @@ const SendMessageSchema = z
 
 const PathParamsSchema = z
     .object({
-        workspaceId: z.string().uuid(),
+        workspaceId: z.string().uuid('workspaceId is required'),
         channelId: z.string().uuid().optional(),
         conversationId: z.string().uuid().optional(),
     })

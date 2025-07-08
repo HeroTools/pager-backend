@@ -1,8 +1,8 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
-import { getUserIdFromToken } from './helpers/auth';
-import { getWorkspaceMember } from './helpers/get-member';
-import { successResponse, errorResponse } from './utils/response';
-import dbPool from './utils/create-db-pool';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { getWorkspaceMember } from '../../common/helpers/get-member';
+import { successResponse, errorResponse } from '../../common/utils/response';
+import dbPool from '../../common/utils/create-db-pool';
 
 export const handler: APIGatewayProxyHandler = async (event, context) => {
     context.callbackWaitsForEmptyEventLoop = false;

@@ -1,5 +1,5 @@
-import { supabase } from '../utils/supabase-client';
-import { CreatedNotification } from '../types';
+import { supabase } from '../../../common/utils/supabase-client';
+import { CreatedNotification } from '../../types';
 
 export const broadcastNotification = async (notification: CreatedNotification) => {
     try {

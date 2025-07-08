@@ -1,9 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
-import { getUserIdFromToken } from './helpers/auth';
-import { setCorsHeaders, errorResponse, successResponse } from './utils/response';
-import dbPool from './utils/create-db-pool';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { setCorsHeaders, errorResponse, successResponse } from '../../common/utils/response';
+import dbPool from '../../common/utils/create-db-pool';
 import { validateMessageAccess } from './helpers/validate-member-access';
 import { softDeleteOnlyParent } from './helpers/soft-delete-parent-message';
 import { broadcastMessageDelete } from './helpers/broadcasting';
