@@ -1,11 +1,11 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
-import { getUserIdFromToken } from './helpers/auth';
-import { supabase } from './utils/supabase-client';
-import { setCorsHeaders, errorResponse, successResponse } from './utils/response';
-import { getMember } from './helpers/get-member';
-import { deltaToMarkdown } from './helpers/quill-delta-converters';
-import { broadcastMessageUpdate } from './helpers/broadcasting';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { supabase } from '../../common/utils/supabase-client';
+import { setCorsHeaders, errorResponse, successResponse } from '../../common/utils/response';
+import { getMember } from '../../common/helpers/get-member';
+import { deltaToMarkdown } from '../helpers/quill-delta-converters';
+import { broadcastMessageUpdate } from '../helpers/broadcasting';
 
 const PathParamsSchema = z.object({
     workspaceId: z.string().uuid('Invalid workspace ID format'),
