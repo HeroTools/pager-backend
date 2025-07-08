@@ -36,8 +36,26 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return errorResponse('Not a member of this workspace', 403);
     }
 
+    // Get all conversation members to check if this is a self-conversation
+    const { data: conversationMembers, error: conversationMembersError } = await supabase
+      .from('conversation_members')
+      .select('id, workspace_member_id')
+      .eq('conversation_id', conversationId)
+      .is('left_at', null);
+
+    if (conversationMembersError || !conversationMembers) {
+      return errorResponse('Error fetching conversation members', 500);
+    }
+
+    if (conversationMembers.length === 1) {
+      return errorResponse('Cannot delete self-conversation', 403);
+    }
+
     // Verify user is part of this conversation
-    if (member.id !== conversation.member_one_id && member.id !== conversation.member_two_id) {
+    const userConversationMember = conversationMembers.find(
+      (cm) => cm.workspace_member_id === member.id,
+    );
+    if (!userConversationMember) {
       return errorResponse('Not authorized to delete this conversation', 403);
     }
 
@@ -50,6 +68,16 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     if (messagesError) {
       console.error('Error deleting conversation messages:', messagesError);
       // Continue with conversation deletion even if message deletion fails
+    }
+
+    // Delete conversation members
+    const { error: membersError } = await supabase
+      .from('conversation_members')
+      .delete()
+      .eq('conversation_id', conversationId);
+
+    if (membersError) {
+      console.error('Error deleting conversation members:', membersError);
     }
 
     // Delete conversation
