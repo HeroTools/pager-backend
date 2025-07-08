@@ -27,7 +27,7 @@ const populateReactions = async (messageId: string) => {
   }, []);
 
   // Remove member_id from the final response
-  return reactionCounts.map(({ member_id, ...rest }) => rest);
+  return reactionCounts.map(({ _member_id, ...rest }) => rest);
 };
 
 export { populateReactions };
