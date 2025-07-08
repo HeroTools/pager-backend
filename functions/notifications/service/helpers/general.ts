@@ -1,5 +1,5 @@
 import { PoolClient } from 'pg';
-import { Notification } from '../types';
+import { Notification } from '../../types';
 
 async function getChannelName(client: PoolClient, channelId: string): Promise<string> {
     const query = `SELECT name FROM channels WHERE id = $1`;

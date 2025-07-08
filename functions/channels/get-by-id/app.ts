@@ -1,8 +1,8 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { getUserIdFromToken } from './helpers/auth';
-import { getWorkspaceMember } from './helpers/get-member';
-import { supabase } from './utils/supabase-client';
-import { successResponse, errorResponse } from './utils/response';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { getMember } from '../../common/helpers/get-member';
+import { supabase } from '../../common/utils/supabase-client';
+import { successResponse, errorResponse } from '../../common/utils/response';
 // We will be fetching the messaging for the channel here, in addition to the information that's related to the channel.
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
@@ -19,7 +19,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Channel ID and workspace ID are required', 400);
         }
 
-        const workspaceMember = await getWorkspaceMember(workspaceId, userId);
+        const workspaceMember = await getMember(workspaceId, userId);
 
         if (!workspaceMember) {
             return errorResponse('Not a member of this workspace', 403);

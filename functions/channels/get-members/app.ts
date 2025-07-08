@@ -1,8 +1,8 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { getUserIdFromToken } from './helpers/auth';
-import { getWorkspaceMember } from './helpers/get-member';
-import { supabase } from './utils/supabase-client';
-import { setCorsHeaders, successResponse, errorResponse } from './utils/response';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { getMember } from '../../common/helpers/get-member';
+import { supabase } from '../../common/utils/supabase-client';
+import { setCorsHeaders, successResponse, errorResponse } from '../../common/utils/response';
 
 interface ChannelMember {
     id: string;
@@ -34,7 +34,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Channel ID and workspace ID are required', 400, corsHeaders);
         }
 
-        const workspaceMember = await getWorkspaceMember(workspaceId, userId);
+        const workspaceMember = await getMember(workspaceId, userId);
         if (!workspaceMember) {
             return errorResponse('Not a member of this workspace', 403, corsHeaders);
         }

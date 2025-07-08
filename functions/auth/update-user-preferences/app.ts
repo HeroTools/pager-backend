@@ -1,8 +1,8 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { getUserIdFromToken } from './helpers/auth';
-import { supabase } from './utils/supabase-client';
-import { successResponse, errorResponse, setCorsHeaders } from './utils/response';
-import { UpdateUserPreferencesRequest } from './types';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { supabase } from '../../common/utils/supabase-client';
+import { successResponse, errorResponse, setCorsHeaders } from '../../common/utils/response';
+import { UpdateUserPreferencesRequest } from '../types';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     const origin = event.headers.Origin || event.headers.origin;
@@ -51,12 +51,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         updateData.updated_at = new Date().toISOString();
 
         // Update user preferences
-        const { data, error } = await supabase
-            .from('users')
-            .update(updateData)
-            .eq('id', userId)
-            .select()
-            .single();
+        const { data, error } = await supabase.from('users').update(updateData).eq('id', userId).select().single();
 
         if (error) {
             console.error('Error updating user preferences:', error);
@@ -68,4 +63,4 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         console.error('Error updating user preferences:', error);
         return errorResponse('Internal server error', 500, corsHeaders);
     }
-}; 
+};

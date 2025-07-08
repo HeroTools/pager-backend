@@ -1,9 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { getUserIdFromToken } from './helpers/auth';
-import { getChannelMember, getWorkspaceMember } from './helpers/get-member';
-import { supabase } from './utils/supabase-client';
-import { setCorsHeaders, successResponse, errorResponse } from './utils/response';
-import { parseChannelName } from './helpers/parse-channel-name';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { getChannelMember } from '../../common/helpers/get-member';
+import { supabase } from '../../common/utils/supabase-client';
+import { setCorsHeaders, successResponse, errorResponse } from '../../common/utils/response';
+import { parseChannelName } from '../helpers/parse-channel-name';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     const origin = event.headers.Origin || event.headers.origin;
@@ -29,7 +29,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         }
 
         if (!name && !channel_type && description === undefined) {
-            return errorResponse('At least one field (name, channel_type, or description) is required', 400, corsHeaders);
+            return errorResponse(
+                'At least one field (name, channel_type, or description) is required',
+                400,
+                corsHeaders,
+            );
         }
 
         // Validate channel_type if provided
@@ -37,13 +41,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             return errorResponse('Channel type must be either "public" or "private"', 400, corsHeaders);
         }
 
-        const workspaceMember = await getWorkspaceMember(workspaceId, userId);
-
-        if (!workspaceMember) {
-            return errorResponse('Not a member of this workspace', 403, corsHeaders);
-        }
-
-        const channelMember = await getChannelMember(channelId, userId);
+        const channelMember = await getChannelMember(channelId, userId, workspaceId);
 
         if (!channelMember || channelMember.role !== 'admin') {
             return errorResponse('Admin access required', 403, corsHeaders);
@@ -68,10 +66,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         }
 
         // Update channel
-        const { error } = await supabase
-            .from('channels')
-            .update(updateData)
-            .eq('id', channelId);
+        const { error } = await supabase.from('channels').update(updateData).eq('id', channelId);
 
         if (error) {
             throw error;
