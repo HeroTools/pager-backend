@@ -1,4 +1,4 @@
-import { supabase } from './utils/supabase-client';
+import { supabase } from '../../common/utils/supabase-client';
 
 interface MessageCleanupEvent {
     channelId: string;

@@ -1,9 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { LambdaClient, InvokeCommand, InvocationType } from '@aws-sdk/client-lambda';
-import { getUserIdFromToken } from './helpers/auth';
-import { getChannelMember } from './helpers/get-member';
-import { supabase } from './utils/supabase-client';
-import { successResponse, errorResponse } from './utils/response';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { getChannelMember } from '../../common/helpers/get-member';
+import { supabase } from '../../common/utils/supabase-client';
+import { successResponse, errorResponse } from '../../common/utils/response';
 
 const lambdaClient = new LambdaClient({ region: 'us-east-2' });
 
