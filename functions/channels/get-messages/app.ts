@@ -9,41 +9,48 @@ import type { MessageWithUser } from '../../common/types';
 
 // Validation schemas
 const PathParamsSchema = z.object({
-    channelId: z.string().uuid('channelId is required'),
-    workspaceId: z.string().uuid('workspaceId is required'),
+  channelId: z.string().uuid('channelId is required'),
+  workspaceId: z.string().uuid('workspaceId is required'),
 });
 
 const QueryParamsSchema = z.object({
-    limit: z.coerce.number().min(1).max(100).default(50),
-    cursor: z.string().uuid().optional(),
-    before: z.string().datetime().optional(),
-    include_members: z.enum(['true', 'false']).default('false'),
-    include_reactions: z.enum(['true', 'false']).default('true'),
-    include_attachments: z.enum(['true', 'false']).default('true'),
-    include_count: z.enum(['true', 'false']).default('false'),
+  limit: z.coerce.number().min(1).max(100).default(50),
+  cursor: z.string().uuid().optional(),
+  before: z.string().datetime().optional(),
+  include_members: z.enum(['true', 'false']).default('false'),
+  include_reactions: z.enum(['true', 'false']).default('true'),
+  include_attachments: z.enum(['true', 'false']).default('true'),
+  include_count: z.enum(['true', 'false']).default('false'),
 });
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    let client: PoolClient | null = null;
+  let client: PoolClient | null = null;
 
-    try {
-        // 1) Validate
-        const pathParams = PathParamsSchema.parse(event.pathParameters);
-        const queryParams = QueryParamsSchema.parse(event.queryStringParameters || {});
-        const { channelId, workspaceId } = pathParams;
-        const { limit, cursor, before, include_members, include_reactions, include_attachments, include_count } =
-            queryParams;
+  try {
+    // 1) Validate
+    const pathParams = PathParamsSchema.parse(event.pathParameters);
+    const queryParams = QueryParamsSchema.parse(event.queryStringParameters || {});
+    const { channelId, workspaceId } = pathParams;
+    const {
+      limit,
+      cursor,
+      before,
+      include_members,
+      include_reactions,
+      include_attachments,
+      include_count,
+    } = queryParams;
 
-        // 2) Authenticate
-        const userId = await getUserIdFromToken(event.headers.Authorization);
-        if (!userId) {
-            return errorResponse('Unauthorized', 401);
-        }
+    // 2) Authenticate
+    const userId = await getUserIdFromToken(event.headers.Authorization);
+    if (!userId) {
+      return errorResponse('Unauthorized', 401);
+    }
 
-        client = await dbPool.connect();
+    client = await dbPool.connect();
 
-        // 3) Mega‐query: top‐level messages + thread stats + reactions + attachments
-        const mainQuery = `
+    // 3) Mega‐query: top‐level messages + thread stats + reactions + attachments
+    const mainQuery = `
       WITH cursor_timestamp AS (
         SELECT created_at
         FROM messages
@@ -240,48 +247,48 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         ca.last_read_message_id, ca.is_member;
     `;
 
-        const { rows } = await client.query(mainQuery, [
-            channelId, // $1
-            userId, // $2
-            cursor || null, // $3
-            workspaceId, // $4
-            before || null, // $5
-            limit, // $6
-            include_reactions, // $7
-            include_attachments, // $8
-        ]);
+    const { rows } = await client.query(mainQuery, [
+      channelId, // $1
+      userId, // $2
+      cursor || null, // $3
+      workspaceId, // $4
+      before || null, // $5
+      limit, // $6
+      include_reactions, // $7
+      include_attachments, // $8
+    ]);
 
-        if (rows.length === 0) {
-            return errorResponse('Channel not found or access denied', 403);
+    if (rows.length === 0) {
+      return errorResponse('Channel not found or access denied', 403);
+    }
+    const result = rows[0];
+    if (!result.is_member && result.channel_type !== 'public') {
+      return errorResponse('Access denied', 403);
+    }
+
+    // Pagination
+    const raw = result.messages_data || [];
+    const hasMore = raw.length > limit;
+    const slice = hasMore ? raw.slice(0, limit) : raw;
+    const nextCursor = hasMore && slice.length > 0 ? slice[slice.length - 1].id : null;
+
+    // Reactions grouping
+    const messages: MessageWithUser[] = slice.map((msg: any) => {
+      const map: Record<string, any> = {};
+      (msg.reactions || []).forEach((r: any) => {
+        if (!map[r.value]) {
+          map[r.value] = { id: `${msg.id}_${r.value}`, value: r.value, count: 0, users: [] };
         }
-        const result = rows[0];
-        if (!result.is_member && result.channel_type !== 'public') {
-            return errorResponse('Access denied', 403);
-        }
+        map[r.value].count++;
+        map[r.value].users.push({ id: r.user_id, name: r.user_name });
+      });
+      return { ...msg, reactions: Object.values(map) };
+    });
 
-        // Pagination
-        const raw = result.messages_data || [];
-        const hasMore = raw.length > limit;
-        const slice = hasMore ? raw.slice(0, limit) : raw;
-        const nextCursor = hasMore && slice.length > 0 ? slice[slice.length - 1].id : null;
-
-        // Reactions grouping
-        const messages: MessageWithUser[] = slice.map((msg: any) => {
-            const map: Record<string, any> = {};
-            (msg.reactions || []).forEach((r: any) => {
-                if (!map[r.value]) {
-                    map[r.value] = { id: `${msg.id}_${r.value}`, value: r.value, count: 0, users: [] };
-                }
-                map[r.value].count++;
-                map[r.value].users.push({ id: r.user_id, name: r.user_name });
-            });
-            return { ...msg, reactions: Object.values(map) };
-        });
-
-        // Channel members
-        let channelMembers: ChannelMemberWithUser[] = [];
-        if (include_members === 'true') {
-            const membersQuery = `
+    // Channel members
+    let channelMembers: ChannelMemberWithUser[] = [];
+    if (include_members === 'true') {
+      const membersQuery = `
         SELECT
           cm.id,
           cm.workspace_member_id,
@@ -301,63 +308,66 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         WHERE cm.channel_id = $1
         ORDER BY cm.joined_at ASC
       `;
-            const { rows: memRows } = await client.query(membersQuery, [channelId]);
-            channelMembers = memRows.map((m) => ({
-                id: m.id,
-                workspace_member_id: m.workspace_member_id,
-                role: m.role,
-                joined_at: m.joined_at,
-                notifications_enabled: m.notifications_enabled,
-                last_read_message_id: m.last_read_message_id,
-                channel_id: channelId,
-                user: {
-                    id: m.user_id,
-                    name: m.user_name,
-                    email: m.user_email,
-                    image: m.user_image,
-                },
-            }));
-        }
+      const { rows: memRows } = await client.query(membersQuery, [channelId]);
+      channelMembers = memRows.map((m) => ({
+        id: m.id,
+        workspace_member_id: m.workspace_member_id,
+        role: m.role,
+        joined_at: m.joined_at,
+        notifications_enabled: m.notifications_enabled,
+        last_read_message_id: m.last_read_message_id,
+        channel_id: channelId,
+        user: {
+          id: m.user_id,
+          name: m.user_name,
+          email: m.user_email,
+          image: m.user_image,
+        },
+      }));
+    }
 
-        // Total count
-        let totalCount = 0;
-        if (include_count === 'true') {
-            const cntQ = `
+    // Total count
+    let totalCount = 0;
+    if (include_count === 'true') {
+      const cntQ = `
         SELECT COUNT(*) AS total
         FROM messages
         WHERE channel_id = $1 AND deleted_at IS NULL
       `;
-            const { rows: cntRows } = await client.query(cntQ, [channelId]);
-            totalCount = parseInt(cntRows[0]?.total || '0', 10);
-        }
-
-        return successResponse({
-            channel: {
-                id: result.channel_id,
-                name: result.channel_name,
-                description: result.channel_description,
-                channel_type: result.channel_type,
-            },
-            messages,
-            members: channelMembers,
-            pagination: { hasMore, nextCursor, totalCount },
-            user_channel_data: result.is_member
-                ? {
-                      role: result.user_role,
-                      notifications_enabled: result.user_notifications,
-                      last_read_message_id: result.user_last_read,
-                  }
-                : null,
-        });
-    } catch (error) {
-        console.error('Error fetching channel messages:', error);
-        if (error instanceof z.ZodError) {
-            return errorResponse(`Validation error: ${error.errors.map((e) => e.message).join(', ')}`, 400);
-        }
-        return errorResponse('Internal server error', 500);
-    } finally {
-        if (client) {
-            client.release();
-        }
+      const { rows: cntRows } = await client.query(cntQ, [channelId]);
+      totalCount = parseInt(cntRows[0]?.total || '0', 10);
     }
+
+    return successResponse({
+      channel: {
+        id: result.channel_id,
+        name: result.channel_name,
+        description: result.channel_description,
+        channel_type: result.channel_type,
+      },
+      messages,
+      members: channelMembers,
+      pagination: { hasMore, nextCursor, totalCount },
+      user_channel_data: result.is_member
+        ? {
+            role: result.user_role,
+            notifications_enabled: result.user_notifications,
+            last_read_message_id: result.user_last_read,
+          }
+        : null,
+    });
+  } catch (error) {
+    console.error('Error fetching channel messages:', error);
+    if (error instanceof z.ZodError) {
+      return errorResponse(
+        `Validation error: ${error.errors.map((e) => e.message).join(', ')}`,
+        400,
+      );
+    }
+    return errorResponse('Internal server error', 500);
+  } finally {
+    if (client) {
+      client.release();
+    }
+  }
 };
