@@ -1,4 +1,4 @@
-import { supabase } from '../utils/supabase-client';
+import { supabase } from '../../common/utils/supabase-client';
 
 const populateReactions = async (messageId: string) => {
     const { data: reactions } = await supabase.from('reactions').select('*').eq('message_id', messageId);
