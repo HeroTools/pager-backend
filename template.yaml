@@ -1077,8 +1077,8 @@ Resources:
     SignUpFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/auth/sign-up
-            Handler: app.handler
+            CodeUri: functions/auth
+            Handler: sign-up/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1098,14 +1098,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - sign-up/app.ts
 
     # SIGN IN
     SignInFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/auth/sign-in
-            Handler: app.handler
+            CodeUri: functions/auth
+            Handler: sign-in/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1122,14 +1122,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - sign-in/app.ts
 
     # GET INVITE LINK
     GetInviteLinkFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/auth/get-invite-link
-            Handler: app.handler
+            CodeUri: functions/auth
+            Handler: get-invite-link/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1149,14 +1149,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - get-invite-link/app.ts
 
     # SIGN OUT
     SignOutFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/auth/sign-out
-            Handler: app.handler
+            CodeUri: functions/auth
+            Handler: sign-out/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1173,14 +1173,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - sign-out/app.ts
 
     # GET CURRENT USER
     GetCurrentUserFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/auth/current-user
-            Handler: app.handler
+            CodeUri: functions/auth
+            Handler: current-user/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1197,14 +1197,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - current-user/app.ts
 
     # UPDATE PROFILE
     UpdateProfileFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/auth/update-profile
-            Handler: app.handler
+            CodeUri: functions/auth
+            Handler: update-profile/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1221,14 +1221,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - update-profile/app.ts
 
     # UPDATE USER PREFERENCES
     UpdateUserPreferencesFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/auth/update-user-preferences
-            Handler: app.handler
+            CodeUri: functions/auth
+            Handler: update-user-preferences/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1245,14 +1245,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - update-user-preferences/app.ts
 
     # RESET PASSWORD REQUEST
     ResetPasswordRequestFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/auth/reset-password-request
-            Handler: app.handler
+            CodeUri: functions/auth
+            Handler: reset-password-request/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1272,14 +1272,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - reset-password-request/app.ts
 
     # UPDATE PASSWORD
     UpdatePasswordFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/auth/update-password
-            Handler: app.handler
+            CodeUri: functions/auth
+            Handler: update-password/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1296,14 +1296,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - update-password/app.ts
 
     # REFRESH TOKEN
     RefreshTokenFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/auth/refresh-token
-            Handler: app.handler
+            CodeUri: functions/auth
+            Handler: refresh-token/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1320,14 +1320,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - refresh-token/app.ts
 
     # VERIFY EMAIL
     VerifyEmailFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/auth/verify-email
-            Handler: app.handler
+            CodeUri: functions/auth
+            Handler: verify-email/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -1344,7 +1344,7 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - verify-email/app.ts
 
     # TOGGLE REACTION
     ToggleReactionFunction:

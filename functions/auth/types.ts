@@ -1,3 +1,11 @@
+export interface SignInResponse {
+    user: any; // Supabase user object
+    session: any; // Supabase session object
+    profile: UserProfile;
+    workspaces: Workspace[];
+    defaultWorkspaceId?: string;
+}
+
 export interface AuthResponse {
     user: AuthUser;
     session: AuthSession;
@@ -143,4 +151,22 @@ export interface DatabaseWorkspaceMember {
     role: WorkspaceRole;
     joined_at: string;
     invited_by?: string;
+}
+
+export interface UpdateUserPreferencesRequest {
+    last_workspace_id?: string;
+}
+
+export interface UserPreferences {
+    id: string;
+    email: string;
+    name?: string;
+    avatar_url?: string;
+    created_at: string;
+    updated_at: string;
+    last_workspace_id?: string;
+}
+
+export interface UpdateUserPreferencesResponse {
+    preferences: UserPreferences;
 }

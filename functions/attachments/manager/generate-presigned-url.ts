@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { getUserIdFromToken } from './helpers/auth';
-import { getMember } from './helpers/get-member';
-import { errorResponse, successResponse } from './utils/response';
-import { supabase } from './utils/supabase-client';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { getMember } from '../../common/helpers/get-member';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import { supabase } from '../../common/utils/supabase-client';
 import sanitizeFilename from './helpers/sanitize-file-name';
 
 const ALLOWED_FILE_PURPOSES = [
