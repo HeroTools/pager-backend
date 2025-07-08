@@ -69,9 +69,9 @@ export const handler = async (event: any) => {
             return errorResponse('Unauthorized', 401);
         }
 
-        const { workspaceMember, memberError } = await getMember(workspaceId, userId);
+        const workspaceMember = await getMember(workspaceId, userId);
 
-        if (memberError || !workspaceMember) {
+        if (!workspaceMember) {
             return errorResponse('Not a workspace member', 403);
         }
 
