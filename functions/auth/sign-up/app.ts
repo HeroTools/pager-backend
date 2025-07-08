@@ -80,6 +80,53 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         return errorResponse(message, statusCode);
       }
       workspaceJoined = data;
+
+      // Create self-conversation for the user in the joined workspace
+      if (workspaceJoined) {
+        try {
+          // Get the workspace member ID for the newly joined user
+          const { data: workspaceMember, error: memberError } = await supabase
+            .from('workspace_members')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('workspace_id', workspaceJoined.id)
+            .single();
+
+          if (memberError || !workspaceMember) {
+            console.error(
+              'Error fetching workspace member for self-conversation creation:',
+              memberError,
+            );
+          } else {
+            // Create conversation
+            const { data: conversation, error: conversationError } = await supabase
+              .from('conversations')
+              .insert({ workspace_id: workspaceJoined.id })
+              .select('id')
+              .single();
+
+            if (conversationError || !conversation) {
+              console.error('Error creating self-conversation:', conversationError);
+            } else {
+              // Add user to the conversation
+              const { error: memberInsertError } = await supabase
+                .from('conversation_members')
+                .insert({
+                  conversation_id: conversation.id,
+                  workspace_member_id: workspaceMember.id,
+                });
+
+              if (memberInsertError) {
+                console.error('Error adding user to self-conversation:', memberInsertError);
+                // Clean up the conversation if member insertion fails
+                await supabase.from('conversations').delete().eq('id', conversation.id);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error in self-conversation creation process:', error);
+        }
+      }
     } else if (isNewUser) {
       const { error: profileError } = await supabase
         .from('users')
