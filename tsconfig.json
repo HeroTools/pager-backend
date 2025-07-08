@@ -1,15 +1,15 @@
 {
   "compilerOptions": {
-    "target": "es2020",
+    "target": "es2024",
     "strict": true,
     "preserveConstEnums": true,
     "noEmit": true,
     "sourceMap": false,
-    "module": "es2015",
+    "module": "ESNext",
     "moduleResolution": "node",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "exclude": ["node_modules"],
+  "exclude": ["node_modules", ".aws-sam"]
 }
