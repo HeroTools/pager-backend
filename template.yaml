@@ -453,8 +453,8 @@ Resources:
     NotificationServiceFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/notifications/service
-            Handler: app.handler
+            CodeUri: functions/notifications
+            Handler: service/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -464,14 +464,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - service/app.ts
 
     # MARK AS READ
     MarkAsReadFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/notifications/mark-as-read
-            Handler: app.handler
+            CodeUri: functions/notifications
+            Handler: mark-as-read/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -488,14 +488,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - mark-as-read/app.ts
 
     # MARK ALL AS READ
     MarkAllAsReadFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/notifications/mark-all-as-read
-            Handler: app.handler
+            CodeUri: functions/notifications
+            Handler: mark-all-as-read/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -512,14 +512,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - mark-all-as-read/app.ts
 
     # GET UNREAD COUNT
     GetUnreadCountFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/notifications/get-unread-count
-            Handler: app.handler
+            CodeUri: functions/notifications
+            Handler: get-unread-count/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -536,14 +536,14 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - get-unread-count/app.ts
 
     # GET NOTIFICATIONS
     GetNotificationsFunction:
         Type: AWS::Serverless::Function
         Properties:
-            CodeUri: functions/notifications/get
-            Handler: app.handler
+            CodeUri: functions/notifications
+            Handler: get/app.handler
             Runtime: nodejs20.x
             Architectures:
                 - arm64
@@ -560,7 +560,7 @@ Resources:
                 Minify: true
                 Target: es2022
                 EntryPoints:
-                    - app.ts
+                    - get/app.ts
 
     # GET ALL AVAILABLE CHANNELS
     GetAllAvailableChannelsFunction:

@@ -26,7 +26,7 @@ const SendMessageSchema = z
 
 const PathParamsSchema = z
     .object({
-        workspaceId: z.string().uuid(),
+        workspaceId: z.string().uuid('workspaceId is required'),
         channelId: z.string().uuid().optional(),
         conversationId: z.string().uuid().optional(),
     })
