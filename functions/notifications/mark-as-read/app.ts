@@ -1,10 +1,10 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
-import dbPool from './utils/create-db-pool';
-import { getUserIdFromToken } from './helpers/auth';
-import { errorResponse, setCorsHeaders, successResponse } from './utils/response';
-import { getWorkspaceMember } from './helpers/get-member';
+import dbPool from '../../common/utils/create-db-pool';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { errorResponse, setCorsHeaders, successResponse } from '../../common/utils/response';
+import { getWorkspaceMember } from '../../common/helpers/get-member';
 
 const PathParamsSchema = z.object({
     workspaceId: z.string().uuid('workspaceId is required'),
