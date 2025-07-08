@@ -5,8 +5,8 @@ import dbPool from '../../common/utils/create-db-pool';
 import { getUserIdFromToken } from '../../common/helpers/auth';
 import { successResponse, errorResponse } from '../../common/utils/response';
 import { MessageWithUser } from '../../common/types';
+import { withCors } from '../../common/utils/cors';
 
-// Validation schemas
 const PathParamsSchema = z.object({
   messageId: z.string().uuid('messageId is required'),
   workspaceId: z.string().uuid('workspaceId is required'),
@@ -32,34 +32,34 @@ interface MessageRepliesData {
   };
 }
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  let client: PoolClient | null = null;
+export const handler = withCors(
+  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    let client: PoolClient | null = null;
 
-  try {
-    // Validate parameters
-    const pathParams = PathParamsSchema.parse(event.pathParameters);
-    const queryParams = QueryParamsSchema.parse(event.queryStringParameters || {});
+    try {
+      const pathParams = PathParamsSchema.parse(event.pathParameters);
+      const queryParams = QueryParamsSchema.parse(event.queryStringParameters || {});
 
-    const { messageId, workspaceId } = pathParams;
-    const {
-      limit,
-      cursor,
-      before,
-      include_reactions,
-      include_attachments,
-      include_count,
-      entity_type,
-      entity_id,
-    } = queryParams;
+      const { messageId, workspaceId } = pathParams;
+      const {
+        limit,
+        cursor,
+        before,
+        include_reactions,
+        include_attachments,
+        include_count,
+        entity_type,
+        entity_id,
+      } = queryParams;
 
-    const userId = await getUserIdFromToken(event.headers.Authorization);
-    if (!userId) {
-      return errorResponse('Unauthorized', 401);
-    }
+      const userId = await getUserIdFromToken(event.headers.Authorization);
+      if (!userId) {
+        return errorResponse('Unauthorized', 401);
+      }
 
-    client = await dbPool.connect();
+      client = await dbPool.connect();
 
-    const mainQuery = `
+      const mainQuery = `
             WITH cursor_timestamp AS (
                 SELECT created_at 
                 FROM messages 
@@ -205,65 +205,65 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             FROM enriched_replies er
         `;
 
-    const { rows } = await client.query(mainQuery, [
-      messageId, // $1
-      userId, // $2
-      cursor || null, // $3
-      workspaceId, // $4
-      before || null, // $5
-      limit, // $6
-      include_reactions, // $7
-      include_attachments, // $8
-      entity_type, // $9
-      entity_id, // $10
-    ]);
+      const { rows } = await client.query(mainQuery, [
+        messageId, // $1
+        userId, // $2
+        cursor || null, // $3
+        workspaceId, // $4
+        before || null, // $5
+        limit, // $6
+        include_reactions, // $7
+        include_attachments, // $8
+        entity_type, // $9
+        entity_id, // $10
+      ]);
 
-    // If no rows returned, either no access or no replies
-    if (rows.length === 0) {
-      return errorResponse('Access denied or no replies found', 403);
-    }
-
-    const result = rows[0];
-    const rawReplies = result.replies_data || [];
-
-    // Process replies and pagination
-    const hasMore = rawReplies.length > limit;
-    const replies = hasMore ? rawReplies.slice(0, limit) : rawReplies;
-    const nextCursor = hasMore && replies.length > 0 ? replies[replies.length - 1].id : null;
-
-    // Process reactions - group by emoji
-    const processedReplies = replies.map((reply: any) => {
-      const reactionsMap: Record<string, any> = {};
-
-      if (reply.reactions && Array.isArray(reply.reactions)) {
-        reply.reactions.forEach((reaction: any) => {
-          if (!reactionsMap[reaction.value]) {
-            reactionsMap[reaction.value] = {
-              id: `${reply.id}_${reaction.value}`,
-              value: reaction.value,
-              count: 0,
-              users: [],
-            };
-          }
-          reactionsMap[reaction.value].count++;
-          reactionsMap[reaction.value].users.push({
-            id: reaction.user_id,
-            name: reaction.user_name,
-          });
-        });
+      // If no rows returned, either no access or no replies
+      if (rows.length === 0) {
+        return errorResponse('Access denied or no replies found', 403);
       }
 
-      return {
-        ...reply,
-        reactions: Object.values(reactionsMap),
-      };
-    });
+      const result = rows[0];
+      const rawReplies = result.replies_data || [];
 
-    // Get total count if requested
-    let totalCount = 0;
+      // Process replies and pagination
+      const hasMore = rawReplies.length > limit;
+      const replies = hasMore ? rawReplies.slice(0, limit) : rawReplies;
+      const nextCursor = hasMore && replies.length > 0 ? replies[replies.length - 1].id : null;
 
-    if (include_count === 'true') {
-      const countQuery = `
+      // Process reactions - group by emoji
+      const processedReplies = replies.map((reply: any) => {
+        const reactionsMap: Record<string, any> = {};
+
+        if (reply.reactions && Array.isArray(reply.reactions)) {
+          reply.reactions.forEach((reaction: any) => {
+            if (!reactionsMap[reaction.value]) {
+              reactionsMap[reaction.value] = {
+                id: `${reply.id}_${reaction.value}`,
+                value: reaction.value,
+                count: 0,
+                users: [],
+              };
+            }
+            reactionsMap[reaction.value].count++;
+            reactionsMap[reaction.value].users.push({
+              id: reaction.user_id,
+              name: reaction.user_name,
+            });
+          });
+        }
+
+        return {
+          ...reply,
+          reactions: Object.values(reactionsMap),
+        };
+      });
+
+      // Get total count if requested
+      let totalCount = 0;
+
+      if (include_count === 'true') {
+        const countQuery = `
                 WITH access_validation AS (
                     SELECT CASE 
                         WHEN $3 = 'channel' THEN (
@@ -293,39 +293,40 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
                     AND m.deleted_at IS NULL
                     AND av.has_access = true
             `;
-      const { rows: countRows } = await client.query(countQuery, [
-        messageId,
-        userId,
-        entity_type,
-        entity_id,
-      ]);
-      totalCount = parseInt(countRows[0]?.total || '0');
+        const { rows: countRows } = await client.query(countQuery, [
+          messageId,
+          userId,
+          entity_type,
+          entity_id,
+        ]);
+        totalCount = parseInt(countRows[0]?.total || '0');
+      }
+
+      const responseData: MessageRepliesData = {
+        replies: processedReplies as MessageWithUser[],
+        pagination: {
+          hasMore,
+          nextCursor,
+          totalCount,
+        },
+      };
+
+      return successResponse(responseData);
+    } catch (error) {
+      console.error('Error fetching message replies:', error);
+
+      if (error instanceof z.ZodError) {
+        return errorResponse(
+          `Validation error: ${error.errors.map((e) => e.message).join(', ')}`,
+          400,
+        );
+      }
+
+      return errorResponse('Internal server error', 500);
+    } finally {
+      if (client) {
+        client.release();
+      }
     }
-
-    const responseData: MessageRepliesData = {
-      replies: processedReplies as MessageWithUser[],
-      pagination: {
-        hasMore,
-        nextCursor,
-        totalCount,
-      },
-    };
-
-    return successResponse(responseData);
-  } catch (error) {
-    console.error('Error fetching message replies:', error);
-
-    if (error instanceof z.ZodError) {
-      return errorResponse(
-        `Validation error: ${error.errors.map((e) => e.message).join(', ')}`,
-        400,
-      );
-    }
-
-    return errorResponse('Internal server error', 500);
-  } finally {
-    if (client) {
-      client.release();
-    }
-  }
-};
+  },
+);
