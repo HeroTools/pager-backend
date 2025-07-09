@@ -1,65 +1,146 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { getUserIdFromToken } from './helpers/auth';
-import { supabase } from './utils/supabase-client';
-import { errorResponse, successResponse } from './utils/response';
-import { getMember } from './helpers/get-member';
+import { z } from 'zod';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { supabase } from '../../common/utils/supabase-client';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import { getMember } from '../../common/helpers/get-member';
+import { deltaToMarkdown } from '../helpers/quill-delta-converters';
+import { broadcastMessageUpdate } from '../helpers/broadcasting';
+import { withCors } from '../../common/utils/cors';
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+const PathParamsSchema = z.object({
+  workspaceId: z.string().uuid('Invalid workspace ID format'),
+  messageId: z.string().uuid('Invalid message ID format'),
+});
+
+const RequestBodySchema = z.object({
+  body: z.string().min(1, 'Message body is required'),
+});
+
+export const handler = withCors(
+  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
-        const userId = await getUserIdFromToken(event.headers.Authorization);
+      const pathParamsResult = PathParamsSchema.safeParse(event.pathParameters);
+      if (!pathParamsResult.success) {
+        return errorResponse(
+          `Invalid parameters: ${pathParamsResult.error.errors.map((e) => e.message).join(', ')}`,
+          400,
+        );
+      }
+      const { workspaceId, messageId } = pathParamsResult.data;
 
-        if (!userId) {
-            return errorResponse('Unauthorized', 401);
+      const requestBodyResult = RequestBodySchema.safeParse(
+        event.body ? JSON.parse(event.body) : {},
+      );
+      if (!requestBodyResult.success) {
+        return errorResponse(
+          `Invalid request: ${requestBodyResult.error.errors.map((e) => e.message).join(', ')}`,
+          400,
+        );
+      }
+      const { body } = requestBodyResult.data;
+
+      let deltaOps;
+      let messageMarkdown;
+      try {
+        const parsedBody = JSON.parse(body);
+        deltaOps = parsedBody.ops;
+
+        if (!Array.isArray(deltaOps)) {
+          return errorResponse('Invalid message format: ops must be an array', 400);
         }
 
-        const messageId = event.pathParameters?.id;
-        const { body } = JSON.parse(event.body || '{}');
+        messageMarkdown = deltaToMarkdown(deltaOps);
 
-        if (!messageId) {
-            return errorResponse('Message ID is required', 400);
+        if (messageMarkdown.length > 40000) {
+          return errorResponse('Message cannot exceed 40,000 characters', 400);
         }
+      } catch (parseError) {
+        return errorResponse('Invalid message format: must be valid Quill delta JSON', 400);
+      }
 
-        if (!body) {
-            return errorResponse('Body is required', 400);
-        }
+      const userId = await getUserIdFromToken(event.headers.Authorization);
+      if (!userId) {
+        return errorResponse('Unauthorized', 401);
+      }
+      const member = await getMember(workspaceId, userId);
+      if (!member) {
+        return errorResponse('Not a member of this workspace', 403);
+      }
 
-        // Get message and verify ownership
-        const { data: message } = await supabase
-            .from('messages')
-            .select(
-                `
-          *,
-          members!inner(user_id)
-        `,
-            )
-            .eq('id', messageId)
-            .single();
+      const { data: message, error: messageError } = await supabase
+        .from('messages')
+        .select(
+          `
+                *,
+                workspace_members!inner(user_id)
+            `,
+        )
+        .eq('id', messageId)
+        .eq('workspace_id', workspaceId)
+        .is('deleted_at', null)
+        .single();
 
-        if (!message) {
-            return errorResponse('Message not found', 404);
-        }
+      if (messageError || !message) {
+        return errorResponse('Message not found', 404);
+      }
 
-        const member = await getMember(message.workspace_id, userId);
+      if (member.id !== message.workspace_member_id) {
+        return errorResponse('Can only edit your own messages', 403);
+      }
+      const messageAge = Date.now() - new Date(message.created_at).getTime();
+      const maxEditAge = 24 * 60 * 60 * 1000;
+      if (messageAge > maxEditAge) {
+        return errorResponse('Message is too old to edit', 403);
+      }
 
-        if (!member || member.id !== message.member_id) {
-            return errorResponse('Can only edit your own messages', 403);
-        }
+      const { error: updateError } = await supabase
+        .from('messages')
+        .update({
+          body,
+          text: messageMarkdown,
+          edited_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', messageId);
+      if (updateError) {
+        console.error('Database update error:', updateError);
+        return errorResponse('Failed to update message', 500);
+      }
 
-        const { error } = await supabase
-            .from('messages')
-            .update({
-                body,
-                updated_at: new Date().toISOString(),
-            })
-            .eq('id', messageId);
+      await broadcastMessageUpdate(
+        {
+          id: messageId,
+          body,
+          text: messageMarkdown,
+          edited_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          parent_message_id: message.parent_message_id,
+        },
+        workspaceId,
+        message.channel_id,
+        message.conversation_id,
+      );
 
-        if (error) {
-            throw error;
-        }
-
-        return successResponse({ messageId });
+      return successResponse({
+        messageId,
+        updatedAt: new Date().toISOString(),
+      });
     } catch (error) {
-        console.error('Error updating message:', error);
-        return errorResponse('Internal server error', 500);
+      console.error('Error updating message:', error);
+
+      if (error instanceof z.ZodError) {
+        return errorResponse(
+          `Validation error: ${error.errors.map((e) => e.message).join(', ')}`,
+          400,
+        );
+      }
+
+      if (error instanceof SyntaxError) {
+        return errorResponse('Invalid JSON in request body', 400);
+      }
+
+      return errorResponse('Internal server error', 500);
     }
-};
+  },
+);

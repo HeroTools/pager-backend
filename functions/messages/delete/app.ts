@@ -1,54 +1,80 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { getUserIdFromToken } from './helpers/auth';
-import { supabase } from './utils/supabase-client';
-import { errorResponse, successResponse } from './utils/response';
-import { getMember } from './helpers/get-member';
+import { PoolClient } from 'pg';
+import { z } from 'zod';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import dbPool from '../../common/utils/create-db-pool';
+import { validateMessageAccess } from './helpers/validate-member-access';
+import { softDeleteOnlyParent } from './helpers/soft-delete-parent-message';
+import { broadcastMessageDelete } from './helpers/broadcasting';
+import { withCors } from '../../common/utils/cors';
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+const pathParamsSchema = z.object({
+  messageId: z.string().uuid('Invalid message ID format'),
+  workspaceId: z.string().uuid('Invalid workspace ID format'),
+});
+
+export const handler = withCors(
+  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    let client: PoolClient | null = null;
     try {
-        const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(event.headers.Authorization);
+      if (!userId) {
+        return errorResponse('Unauthorized', 401);
+      }
 
-        if (!userId) {
-            return errorResponse('Unauthorized', 401);
-        }
+      const paramsParse = pathParamsSchema.safeParse(event.pathParameters ?? {});
+      if (!paramsParse.success) {
+        const err = paramsParse.error.errors[0];
+        return errorResponse(`Validation error: ${err.message}`, 400);
+      }
+      const { messageId, workspaceId } = paramsParse.data;
 
-        const messageId = event.pathParameters?.id;
+      console.log(`[handler] User ${userId} deleting message ${messageId}`);
 
-        if (!messageId) {
-            return errorResponse('Message ID is required', 400);
-        }
+      client = await dbPool.connect();
+      const access = await validateMessageAccess(client, messageId, userId, workspaceId);
+      if (!access) {
+        return errorResponse('Message not found or access denied', 404);
+      }
+      if (!access.canDelete) {
+        const msg =
+          access.currentMember.role === 'admin'
+            ? 'Admin deletion failed – contact support'
+            : 'Can only delete your own messages or be an admin';
+        return errorResponse(msg, 403);
+      }
 
-        // Get message and verify ownership
-        const { data: message } = await supabase
-            .from('messages')
-            .select(
-                `
-          *,
-          members!inner(user_id)
-        `,
-            )
-            .eq('id', messageId)
-            .single();
+      const deletedAt = new Date().toISOString();
+      const result = await softDeleteOnlyParent(client, messageId, deletedAt);
 
-        if (!message) {
-            return errorResponse('Message not found', 404);
-        }
+      await broadcastMessageDelete(
+        workspaceId,
+        messageId,
+        access.message.parent_message_id,
+        access.message.channel_id,
+        access.message.conversation_id,
+      );
 
-        const member = await getMember(message.workspace_id, userId);
+      return successResponse(result, 200);
+    } catch (err) {
+      console.error('[handler] Error:', err);
 
-        if (!member || member.id !== message.member_id) {
-            return errorResponse('Can only delete your own messages', 403);
-        }
+      if (err instanceof z.ZodError) {
+        const messages = err.errors.map((e) => `${e.path.join('.')}: ${e.message}`);
+        return errorResponse(`Validation failed: ${messages.join(', ')}`, 400);
+      }
 
-        const { error } = await supabase.from('messages').delete().eq('id', messageId);
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      if (msg.includes('not found') || msg.includes('already deleted')) {
+        return errorResponse('Message not found', 404);
+      }
 
-        if (error) {
-            throw error;
-        }
-
-        return successResponse({ messageId });
-    } catch (error) {
-        console.error('Error deleting message:', error);
-        return errorResponse('Internal server error', 500);
+      return errorResponse('Internal server error', 500);
+    } finally {
+      if (client) {
+        client.release();
+      }
     }
-};
+  },
+);
