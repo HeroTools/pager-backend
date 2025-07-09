@@ -1,1703 +1,1637 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-    unowned-api
+  unowned-api
 
 Parameters:
-    StageName:
-        Type: String
-        Default: Prod
-        Description: 'The stage name for the deployment (Dev or Prod)'
-        AllowedValues:
-            - Dev
-            - Prod
+  StageName:
+    Type: String
+    Default: Prod
+    Description: 'The stage name for the deployment (Dev or Prod)'
+    AllowedValues:
+      - Dev
+      - Prod
 
 Conditions:
-    IsDev: !Equals [!Ref StageName, Dev]
-    IsProd: !Equals [!Ref StageName, Prod]
+  IsDev: !Equals [!Ref StageName, Dev]
+  IsProd: !Equals [!Ref StageName, Prod]
 
 Globals:
-    Function:
-        Timeout: 180
-        MemorySize: 512
-        Environment:
-            Variables:
-                OPENAI_API_KEY: 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
-                GOOGLE_CLIENT_ID: 1092811869589-gmlbvma5qliucqscng5vbqbqh2iqe8js.apps.googleusercontent.com
-                GOOGLE_CLIENT_SECRET: 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
-                SUPABASE_URL: !If
-                    - IsDev
-                    - https://ypkobnsdgcclemmiswkj.supabase.co
-                    - !If
-                      - IsProd
-                      - https://ypkobnsdgcclemmiswkj.supabase.co
-                      - https://ypkobnsdgcclemmiswkj.supabase.co
-                SUPABASE_ANON_KEY: !If
-                    - IsDev
-                    - eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwa29ibnNkZ2NjbGVtbWlzd2tqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwNjQ3ODIsImV4cCI6MjA2NTY0MDc4Mn0.APCGppNcajhevHsY8P5G_Bw2uUR89zZaphzByssPDV0
-                    - !If
-                      - IsProd
-                      - eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwa29ibnNkZ2NjbGVtbWlzd2tqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwNjQ3ODIsImV4cCI6MjA2NTY0MDc4Mn0.APCGppNcajhevHsY8P5G_Bw2uUR89zZaphzByssPDV0
-                      - eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwa29ibnNkZ2NjbGVtbWlzd2tqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwNjQ3ODIsImV4cCI6MjA2NTY0MDc4Mn0.APCGppNcajhevHsY8P5G_Bw2uUR89zZaphzByssPDV0
-                SUPABASE_SERVICE_ROLE_KEY: !If
-                    - IsDev
-                    - eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwa29ibnNkZ2NjbGVtbWlzd2tqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDA2NDc4MiwiZXhwIjoyMDY1NjQwNzgyfQ.SzgGzzjXDxNluavuF5JhVsYdK3e37FT-GHxuA_qXt68
-                    - !If
-                      - IsProd
-                      - eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwa29ibnNkZ2NjbGVtbWlzd2tqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDA2NDc4MiwiZXhwIjoyMDY1NjQwNzgyfQ.SzgGzzjXDxNluavuF5JhVsYdK3e37FT-GHxuA_qXt68
-                      - eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwa29ibnNkZ2NjbGVtbWlzd2tqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDA2NDc4MiwiZXhwIjoyMDY1NjQwNzgyfQ.SzgGzzjXDxNluavuF5JhVsYdK3e37FT-GHxuA_qXt68
-                PG_USER: !If
-                    - IsDev
-                    - postgres.ypkobnsdgcclemmiswkj
-                    - !If
-                      - IsProd
-                      - postgres.ypkobnsdgcclemmiswkj
-                      - postgres.ypkobnsdgcclemmiswkj
-                PG_HOST: !If
-                    - IsDev
-                    - aws-0-us-east-2.pooler.supabase.com
-                    - !If
-                      - IsProd
-                      - aws-0-us-east-2.pooler.supabase.com
-                      - aws-0-us-east-2.pooler.supabase.com
-                PG_DATABASE: postgres
-                PG_PASSWORD: !If
-                    - IsDev
-                    - 6wR2m#!nCgaR!K@27Ca%c
-                    - !If
-                      - IsProd
-                      - 6wR2m#!nCgaR!K@27Ca%c
-                      - 6wR2m#!nCgaR!K@27Ca%c
-                PG_PORT: 6543
-                APP_URL_BASE: !If
-                    - IsDev
-                    - 'http://localhost:3000'
-                    - !If
-                      - IsProd
-                      - 'https://app.askbex.ai'
-                      - 'https://app.askbex.ai'
-                ALLOWED_ORIGINS: 'https://app.askbex.ai,http://localhost:3000,https://bex-*.vercel.app'
-    Api:
-        Cors:
-            AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-            AllowOrigin: "'*'"
-            MaxAge: "'3600'"
-            AllowMethods: "'OPTIONS,POST,GET,PUT,DELETE,PATCH'"
-            AllowCredentials: "'true'"
+  Function:
+    Timeout: 180
+    MemorySize: 512
+    Environment:
+      Variables:
+        OPENAI_API_KEY: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/openai-api-key:}}'
+        GOOGLE_CLIENT_ID: !Sub '{{resolve:ssm:/unowned/${StageName}/google-client-id:}}'
+        SUPABASE_URL: !Sub '{{resolve:ssm:/unowned/${StageName}/supabase-url}}'
+        SUPABASE_ANON_KEY: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/supabase-anon-key:}}'
+        SUPABASE_SERVICE_ROLE_KEY: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/supabase-service-role-key:}}'
+        PG_USER: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-user:}}'
+        PG_HOST: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-host:}}'
+        PG_DATABASE: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-database:}}'
+        PG_PASSWORD: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/pg-password:}}'
+        PG_PORT: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-port:}}'
+        FRONTEND_URL: !Sub '{{resolve:ssm:/unowned/${StageName}/frontend-url:}}'
+        ALLOWED_ORIGINS: !Sub '{{resolve:ssm:/unowned/${StageName}/allowed-origins:}}'
+  Api:
+    Cors:
+      AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+      AllowOrigin: "'*'"
+      MaxAge: "'3600'"
+      AllowMethods: "'OPTIONS,POST,GET,PUT,DELETE,PATCH'"
+      AllowCredentials: "'true'"
 
 Resources:
-    MainApi:
-        Type: AWS::Serverless::Api
-        Properties:
-            StageName: !Ref StageName
-            Cors:
-                AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-                AllowOrigin: "'*'"
-                MaxAge: "'3600'"
-                AllowMethods: "'OPTIONS,POST,GET,PUT,DELETE,PATCH'"
-                AllowCredentials: "'true'"
-            GatewayResponses:
-                DEFAULT_4xx:
-                    ResponseParameters:
-                        Headers:
-                            Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-                            Access-Control-Allow-Origin: "'*'"
-                            Access-Control-Allow-Methods: "'OPTIONS,POST,GET,PUT,DELETE,PATCH'"
-                            Access-Control-Allow-Credentials: "'true'"
-                DEFAULT_5xx:
-                    ResponseParameters:
-                        Headers:
-                            Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-                            Access-Control-Allow-Origin: "'*'"
-                            Access-Control-Allow-Methods: "'OPTIONS,POST,GET,PUT,DELETE,PATCH'"
-                            Access-Control-Allow-Credentials: "'true'"
-
-    # CREATE WORKSPACE
-    CreateWorkspaceFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/workspaces
-            Handler: create/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                CreateWorkspace:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - create/app.ts
-
-    # GET WORKSPACES
-    GetWorkspacesFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/workspaces
-            Handler: get/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetWorkspaces:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get/app.ts
-
-    # GET WORKSPACE BY ID
-    GetWorkspaceByIdFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/workspaces
-            Handler: get-by-id/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetWorkspaceById:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get-by-id/app.ts
-
-    # GET WORKSPACE FROM INVITE TOKEN
-    GetWorkspaceFromInviteTokenFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/workspaces
-            Handler: get-from-invite-token/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetWorkspaceFromInviteToken:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/invite-token
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get-from-invite-token/app.ts
-
-    # UPDATE WORKSPACE
-    UpdateWorkspaceFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/workspaces
-            Handler: update/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                UpdateWorkspace:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}
-                        Method: put
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - update/app.ts
-
-    # DELETE WORKSPACE
-    DeleteWorkspaceFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/workspaces
-            Handler: delete/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                DeleteWorkspace:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}
-                        Method: delete
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - delete/app.ts
-
-    # SEND MESSAGE (UNIVERSAL)
-    SendMessageFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/messages
-            Handler: send/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Policies:
-                - AWSLambdaBasicExecutionRole
-                - Version: '2012-10-17'
-                  Statement:
-                      Effect: Allow
-                      Action:
-                          - lambda:InvokeFunctionUrl
-                          - lambda:InvokeFunction
-                          - lambda:InvokeAsync
-                      Resource: !Sub arn:aws:lambda:*:${AWS::AccountId}:function:*
-            Environment:
-                Variables:
-                    NOTIFICATION_SERVICE_FUNCTION_ARN: unowned-dev-NotificationServiceFunction-R3nf7dOf9FUt
-            Events:
-                SendChannelMessage:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/channels/{channelId}/messages
-                        Method: post
-                        RestApiId: !Ref MainApi
-                SendConversationMessage:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/conversations/{conversationId}/messages
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - send/app.ts
-
-    # GET MESSAGE REPLIES
-    GetMessageRepliesFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/messages
-            Handler: get-message-replies/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetMessageReplies:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/messages/{messageId}/replies
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get-message-replies/app.ts
-
-    # Typing Indicator
-    TypingIndicatorFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/messages
-            Handler: typing-indicator/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                ChannelTyping:
-                    Type: Api
-                    Properties:
-                        RestApiId: !Ref MainApi
-                        Path: /workspaces/{workspaceId}/channels/{channelId}/typing
-                        Method: post
-                ConversationTyping:
-                    Type: Api
-                    Properties:
-                        RestApiId: !Ref MainApi
-                        Path: /workspaces/{workspaceId}/conversations/{conversationId}/typing
-                        Method: post
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - typing-indicator/app.ts
-
-    # GET MESSAGES
-    GetMessagesFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/messages
-            Handler: get/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetMessages:
-                    Type: Api
-                    Properties:
-                        Path: /messages
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get/app.ts
-
-    # GET MESSAGE BY ID
-    GetMessageByIdFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/messages
-            Handler: get-by-id/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetMessageById:
-                    Type: Api
-                    Properties:
-                        Path: /messages/{messageId}
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get-by-id/app.ts
-
-    # UPDATE MESSAGE
-    UpdateMessageFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/messages
-            Handler: update/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                UpdateMessage:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/messages/{messageId}
-                        Method: put
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - update/app.ts
-
-    # DELETE MESSAGE
-    DeleteMessageFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/messages
-            Handler: delete/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                DeleteMessage:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/messages/{messageId}
-                        Method: delete
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - delete/app.ts
-
-    # NOTIFICATION SERVICE
-    NotificationServiceFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/notifications
-            Handler: service/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - service/app.ts
-
-    # MARK AS READ
-    MarkAsReadFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/notifications
-            Handler: mark-as-read/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                MarkAsRead:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/me/notifications/read
-                        Method: patch
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - mark-as-read/app.ts
-
-    # MARK ALL AS READ
-    MarkAllAsReadFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/notifications
-            Handler: mark-all-as-read/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                MarkAllAsRead:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/me/notifications/mark-all-read
-                        Method: patch
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - mark-all-as-read/app.ts
-
-    # GET UNREAD COUNT
-    GetUnreadCountFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/notifications
-            Handler: get-unread-count/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetUnreadCount:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/me/notifications/unread-count
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get-unread-count/app.ts
-
-    # GET NOTIFICATIONS
-    GetNotificationsFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/notifications
-            Handler: get/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetNotifications:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/me/notifications
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get/app.ts
-
-    # GET ALL AVAILABLE CHANNELS
-    GetAllAvailableChannelsFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/channels
-            Handler: get-all-available/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetAllAvailableChannels:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/channels/discover/available
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get-all-available/app.ts
-
-    # GET USER'S CHANNELS
-    GetUserChannelsFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/channels
-            Handler: get-user-channels/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetUserChannels:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/members/me/channels
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get-user-channels/app.ts
-
-    # ADD MEMBERS TO CHANNEL
-    AddMembersToChannelFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/channels
-            Handler: add-members/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                AddMembersToChannel:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/channels/{channelId}/members
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - add-members/app.ts
-
-    # REMOVE MEMBERS FROM CHANNEL
-    RemoveMembersFromChannelFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/channels
-            Handler: remove-members/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                RemoveMembersFromChannel:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/channels/{channelId}/members
-                        Method: delete
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - remove-members/app.ts
-
-    # GET CHANNEL MESSAGES
-    GetChannelMessagesFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/channels
-            Handler: get-messages/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetChannelMessages:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/channels/{channelId}/messages
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get-messages/app.ts
-
-    # GET CHANNEL MEMBERS
-    GetChannelMembersFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/channels
-            Handler: get-members/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetChannelMembers:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/channels/{channelId}/members
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get-members/app.ts
-
-    # CREATE CHANNEL
-    CreateChannelFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/channels
-            Handler: create/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                CreateChannel:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/channels
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - create/app.ts
-
-    # GET CHANNEL BY ID
-    GetChannelByIdFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/channels
-            Handler: get-by-id/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetChannelById:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/channels/{channelId}
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get-by-id/app.ts
-
-    # UPDATE CHANNEL
-    UpdateChannelFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/channels
-            Handler: update/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                UpdateChannel:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/channels/{channelId}
-                        Method: patch
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - update/app.ts
-
-    # DELETE CHANNEL
-    DeleteChannelFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/channels
-            Handler: delete/delete-channel.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Environment:
-                Variables:
-                    MESSAGE_CLEANUP_FUNCTION_ARN: !GetAtt MessageCleanupFunction.Arn
-            Policies:
-                - AWSLambdaBasicExecutionRole
-                - Version: '2012-10-17'
-                  Statement:
-                      Effect: Allow
-                      Action:
-                          - lambda:InvokeFunctionUrl
-                          - lambda:InvokeFunction
-                          - lambda:InvokeAsync
-                      Resource: !Sub arn:aws:lambda:*:${AWS::AccountId}:function:*
-            Events:
-                DeleteChannel:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/channels/{channelId}
-                        Method: delete
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - delete/delete-channel.ts
-
-    # MESSAGE CLEANUP - Background job only (no API)
-    MessageCleanupFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/channels
-            Handler: delete/message-cleanup.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Timeout: 900 # 15 minutes for large channels
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - delete/message-cleanup.ts
-
-    # CREATE OR GET CONVERSATION
-    CreateOrGetConversationFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/conversations
-            Handler: create-or-get/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                CreateOrGetConversation:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/conversations
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - create-or-get/app.ts
-
-    # GET ALL CONVERSATIONS
-    GetConversationsFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/conversations
-            Handler: get/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetConversations:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/conversations
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get/app.ts
-
-    # GET A SINGLE CONVERSATION BY ID
-    GetConversationByIdFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/conversations
-            Handler: get-by-id/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetConversationById:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/conversations/{conversationId}
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get-by-id/app.ts
-
-    # GET MESSAGES FOR A CONVERSATION
-    GetConversationMessagesFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/conversations
-            Handler: get-messages/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetConversationMessages:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/conversations/{conversationId}/messages
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get-messages/app.ts
-
-    # DELETE A CONVERSATION
-    DeleteConversationFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/conversations
-            Handler: delete/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                DeleteConversation:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/conversations/{conversationId}
-                        Method: delete
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - delete/app.ts
-
-    # GET CURRENT MEMBER
-    GetCurrentMemberFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/members/current
-            Handler: app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetCurrentMember:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/members/me/current
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - app.ts
-
-    # GET MEMBERS
-    GetMembersFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/members/get
-            Handler: app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetMembers:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/members
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - app.ts
-
-    # GET MEMBER BY ID
-    GetMemberByIdFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/members/get-by-id
-            Handler: app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetMemberById:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/members/{memberId}
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - app.ts
-
-    # UPDATE MEMBER
-    UpdateMemberFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/members/update
-            Handler: app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                UpdateMember:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/members/{memberId}
-                        Method: put
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - app.ts
-
-    # REMOVE MEMBER
-    RemoveMemberFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/members/remove
-            Handler: app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                RemoveMember:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/members/{memberId}
-                        Method: delete
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - app.ts
-
-    # SIGN UP
-    SignUpFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/auth
-            Handler: sign-up/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Environment:
-                Variables:
-                    FRONTEND_URL: https://localhost:3000
-            Events:
-                SignUp:
-                    Type: Api
-                    Properties:
-                        Path: /auth/sign-up
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - sign-up/app.ts
-
-    # SIGN IN
-    SignInFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/auth
-            Handler: sign-in/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                SignIn:
-                    Type: Api
-                    Properties:
-                        Path: /auth/sign-in
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - sign-in/app.ts
-
-    # GET INVITE LINK
-    GetInviteLinkFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/auth
-            Handler: get-invite-link/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Environment:
-                Variables:
-                    FRONTEND_URL: https://localhost:3000
-            Events:
-                GetInviteLink:
-                    Type: Api
-                    Properties:
-                        Path: /auth/invite-link
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get-invite-link/app.ts
-
-    # SIGN OUT
-    SignOutFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/auth
-            Handler: sign-out/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                SignOut:
-                    Type: Api
-                    Properties:
-                        Path: /auth/sign-out
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - sign-out/app.ts
-
-    # GET CURRENT USER
-    GetCurrentUserFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/auth
-            Handler: current-user/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetCurrentUser:
-                    Type: Api
-                    Properties:
-                        Path: /auth/user
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - current-user/app.ts
-
-    # UPDATE PROFILE
-    UpdateProfileFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/auth
-            Handler: update-profile/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                UpdateProfile:
-                    Type: Api
-                    Properties:
-                        Path: /auth/profile
-                        Method: put
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - update-profile/app.ts
-
-    # UPDATE USER PREFERENCES
-    UpdateUserPreferencesFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/auth
-            Handler: update-user-preferences/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                UpdateUserPreferences:
-                    Type: Api
-                    Properties:
-                        Path: /auth/user-preferences
-                        Method: patch
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - update-user-preferences/app.ts
-
-    # RESET PASSWORD REQUEST
-    ResetPasswordRequestFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/auth
-            Handler: reset-password-request/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Environment:
-                Variables:
-                    FRONTEND_URL: https://localhost:3000
-            Events:
-                ResetPasswordRequest:
-                    Type: Api
-                    Properties:
-                        Path: /auth/reset-password
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - reset-password-request/app.ts
-
-    # UPDATE PASSWORD
-    UpdatePasswordFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/auth
-            Handler: update-password/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                UpdatePassword:
-                    Type: Api
-                    Properties:
-                        Path: /auth/update-password
-                        Method: put
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - update-password/app.ts
-
-    # REFRESH TOKEN
-    RefreshTokenFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/auth
-            Handler: refresh-token/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                RefreshToken:
-                    Type: Api
-                    Properties:
-                        Path: /auth/refresh
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - refresh-token/app.ts
-
-    # VERIFY EMAIL
-    VerifyEmailFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/auth
-            Handler: verify-email/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                VerifyEmail:
-                    Type: Api
-                    Properties:
-                        Path: /auth/verify
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - verify-email/app.ts
-
-    # TOGGLE REACTION
-    ToggleReactionFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/reactions
-            Handler: toggle/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                ToggleReaction:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/messages/{messageId}/reactions/toggle
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - toggle/app.ts
-
-    # GET REACTIONS
-    GetReactionsFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/reactions
-            Handler: get/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetReactions:
-                    Type: Api
-                    Properties:
-                        Path: /reactions
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - get/app.ts
-
-    # REMOVE REACTION
-    RemoveReactionFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/reactions
-            Handler: remove/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                RemoveReaction:
-                    Type: Api
-                    Properties:
-                        Path: /reactions/{reactionId}
-                        Method: delete
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - remove/app.ts
-
-    # GET USER REACTIONS
-    GetUserReactionsFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/reactions
-            Handler: user-reactions/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetUserReactions:
-                    Type: Api
-                    Properties:
-                        Path: /reactions/user
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - user-reactions/app.ts
-
-    # GET REACTION STATS
-    GetReactionStatsFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/reactions
-            Handler: stats/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GetReactionStats:
-                    Type: Api
-                    Properties:
-                        Path: /reactions/stats/{messageId}
-                        Method: get
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - stats/app.ts
-
-    InitiateGoogleAuthFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/auth
-            Handler: google-auth/app.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Tracing: Active
-            Environment:
-                Variables:
-                    FRONTEND_URL: https://localhost:3000
-            Events:
-                InitiateGoogleAuth:
-                    Type: Api
-                    Properties:
-                        Path: /auth/google
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - google-auth/app.ts
-
-    # GENERATE PRE-SIGNED URL
-    GeneratePresignedUrlFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/attachments/manager
-            Handler: generate-presigned-url.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                GeneratePresignedUrl:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/attachments/generate/presigned-url
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - generate-presigned-url.ts
-
-    ConfirmUploadFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/attachments/manager
-            Handler: confirm-upload.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                ConfirmUpload:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/attachments/{attachmentId}/confirm
-                        Method: post
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - confirm-upload.ts
-
-    DeleteAttachmentFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/attachments/manager
-            Handler: delete-attachment.handler
-            Runtime: nodejs20.x
-            Architectures:
-                - arm64
-            Events:
-                DeleteAttachment:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/attachments/{attachmentId}
-                        Method: delete
-                        RestApiId: !Ref MainApi
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - delete-attachment.ts
-
-    # 1. SQS Queue for message processing
-    EmbeddingQueue:
-        Type: AWS::SQS::Queue
-        Properties:
-            QueueName: !Sub ${AWS::StackName}-embedding-queue
-            VisibilityTimeout: 300 # 5 minutes (match Lambda timeout)
-            MessageRetentionPeriod: 1209600 # 14 days
-            RedrivePolicy:
-                deadLetterTargetArn: !GetAtt EmbeddingDLQ.Arn
-                maxReceiveCount: 3
-
-    EmbeddingDLQ:
-        Type: AWS::SQS::Queue
-        Properties:
-            QueueName: !Sub ${AWS::StackName}-embedding-dlq
-
-    # 2. EventBridge Rule
-    EmbeddingScheduleRule:
-        Type: AWS::Events::Rule
-        Properties:
-            ScheduleExpression: 'rate(5 minutes)'
-            State: ENABLED
-            Targets:
-                - Arn: !GetAtt EmbeddingOrchestratorFunction.Arn
-                  Id: 'EmbeddingOrchestratorTarget'
-
-    # 3. Lambda Functions
-    EmbeddingOrchestratorFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/embeddings
-            Handler: orchestrator/app.handler
-            Runtime: nodejs20.x
-            Timeout: 60
-            MemorySize: 512
-            Policies:
-                - AWSLambdaBasicExecutionRole
-                - Version: '2012-10-17'
-                  Statement:
-                      - Effect: Allow
-                        Action:
-                            - sqs:SendMessage
-                            - sqs:SendMessageBatch
-                        Resource: !GetAtt EmbeddingQueue.Arn
-                      - Effect: Allow
-                        Action:
-                            - sqs:ReceiveMessage
-                            - sqs:DeleteMessage
-                            - sqs:GetQueueAttributes
-                        Resource: !GetAtt EmbeddingQueue.Arn
-            Environment:
-                Variables:
-                    SQS_QUEUE_URL: !Ref EmbeddingQueue
-                    BATCH_SIZE: 100
-                    MAX_MESSAGES_PER_RUN: 1000
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - orchestrator/app.ts
-
-    EmbeddingWorkerFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/embeddings
-            Handler: worker/app.handler
-            Runtime: nodejs20.x
-            Timeout: 300 # 5 minutes for processing
-            MemorySize: 1024 # More memory for vector operations
-            Environment:
-                Variables:
-                    EMBEDDING_MODEL: 'text-embedding-3-small'
-                    SIMILARITY_THRESHOLD: '0.7'
-                    CONTEXT_TIME_WINDOW_HOURS: '48'
-                    BATCH_SIZE: '100'
-                    MODEL_MAX_TOKENS: '8191'
-            Policies:
-                - AWSLambdaBasicExecutionRole
-                - Version: '2012-10-17'
-                  Statement:
-                      - Effect: Allow
-                        Action:
-                            - sqs:SendMessage
-                            - sqs:SendMessageBatch
-                        Resource: !GetAtt EmbeddingQueue.Arn
-                      - Effect: Allow
-                        Action:
-                            - sqs:ReceiveMessage
-                            - sqs:DeleteMessage
-                            - sqs:GetQueueAttributes
-                        Resource: !GetAtt EmbeddingQueue.Arn
-            Events:
-                SQSEvent:
-                    Type: SQS
-                    Properties:
-                        Queue: !GetAtt EmbeddingQueue.Arn
-                        BatchSize: 25 # Process 25 messages at a time
-                        MaximumBatchingWindowInSeconds: 20
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - worker/app.ts
-
-    SemanticSearchFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: functions/search
-            Handler: service/app.handler
-            Runtime: nodejs20.x
-            Timeout: 30
-            MemorySize: 512
-            Events:
-                ApiEvent:
-                    Type: Api
-                    Properties:
-                        Path: /workspaces/{workspaceId}/search/semantic
-                        Method: post
-        Metadata:
-            BuildMethod: esbuild
-            BuildProperties:
-                Minify: true
-                Target: es2022
-                EntryPoints:
-                    - service/app.ts
-
-    # 4. Permissions
-    EmbeddingOrchestratorInvokePermission:
-        Type: AWS::Lambda::Permission
-        Properties:
-            FunctionName: !Ref EmbeddingOrchestratorFunction
-            Action: lambda:InvokeFunction
-            Principal: events.amazonaws.com
-            SourceArn: !GetAtt EmbeddingScheduleRule.Arn
+  MainApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref StageName
+      Cors:
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+        MaxAge: "'3600'"
+        AllowMethods: "'OPTIONS,POST,GET,PUT,DELETE,PATCH'"
+        AllowCredentials: "'true'"
+
+  # CREATE WORKSPACE
+  CreateWorkspaceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/workspaces
+      Handler: create/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        CreateWorkspace:
+          Type: Api
+          Properties:
+            Path: /workspaces
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - create/app.ts
+
+  # GET WORKSPACES
+  GetWorkspacesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/workspaces
+      Handler: get/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetWorkspaces:
+          Type: Api
+          Properties:
+            Path: /workspaces
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get/app.ts
+
+  # GET WORKSPACE BY ID
+  GetWorkspaceByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/workspaces
+      Handler: get-by-id/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetWorkspaceById:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-by-id/app.ts
+
+  # GET WORKSPACE FROM INVITE TOKEN
+  GetWorkspaceFromInviteTokenFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/workspaces
+      Handler: get-from-invite-token/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetWorkspaceFromInviteToken:
+          Type: Api
+          Properties:
+            Path: /workspaces/invite-token
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-from-invite-token/app.ts
+
+  # UPDATE WORKSPACE
+  UpdateWorkspaceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/workspaces
+      Handler: update/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        UpdateWorkspace:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}
+            Method: put
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - update/app.ts
+
+  # DELETE WORKSPACE
+  DeleteWorkspaceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/workspaces
+      Handler: delete/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        DeleteWorkspace:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - delete/app.ts
+
+  # SEND MESSAGE (UNIVERSAL)
+  SendMessageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/messages
+      Handler: send/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: '2012-10-17'
+          Statement:
+            Effect: Allow
+            Action:
+              - lambda:InvokeFunctionUrl
+              - lambda:InvokeFunction
+              - lambda:InvokeAsync
+            Resource: !Sub arn:aws:lambda:*:${AWS::AccountId}:function:*
+      Environment:
+        Variables:
+          NOTIFICATION_SERVICE_FUNCTION_ARN: unowned-dev-NotificationServiceFunction-R3nf7dOf9FUt
+      Events:
+        SendChannelMessage:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels/{channelId}/messages
+            Method: post
+            RestApiId: !Ref MainApi
+        SendConversationMessage:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/conversations/{conversationId}/messages
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - send/app.ts
+        External:
+          - '@aws-sdk/*'
+
+  # GET MESSAGE REPLIES
+  GetMessageRepliesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/messages
+      Handler: get-message-replies/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetMessageReplies:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/messages/{messageId}/replies
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-message-replies/app.ts
+
+  # Typing Indicator
+  TypingIndicatorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/messages
+      Handler: typing-indicator/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        ChannelTyping:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MainApi
+            Path: /workspaces/{workspaceId}/channels/{channelId}/typing
+            Method: post
+        ConversationTyping:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MainApi
+            Path: /workspaces/{workspaceId}/conversations/{conversationId}/typing
+            Method: post
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - typing-indicator/app.ts
+
+  # GET MESSAGES
+  GetMessagesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/messages
+      Handler: get/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetMessages:
+          Type: Api
+          Properties:
+            Path: /messages
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get/app.ts
+
+  # GET MESSAGE BY ID
+  GetMessageByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/messages
+      Handler: get-by-id/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetMessageById:
+          Type: Api
+          Properties:
+            Path: /messages/{messageId}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-by-id/app.ts
+
+  # UPDATE MESSAGE
+  UpdateMessageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/messages
+      Handler: update/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        UpdateMessage:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/messages/{messageId}
+            Method: put
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - update/app.ts
+
+  # DELETE MESSAGE
+  DeleteMessageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/messages
+      Handler: delete/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        DeleteMessage:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/messages/{messageId}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - delete/app.ts
+
+  # NOTIFICATION SERVICE
+  NotificationServiceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/notifications
+      Handler: service/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - service/app.ts
+
+  # MARK AS READ
+  MarkAsReadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/notifications
+      Handler: mark-as-read/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        MarkAsRead:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/me/notifications/read
+            Method: patch
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - mark-as-read/app.ts
+
+  # MARK ALL AS READ
+  MarkAllAsReadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/notifications
+      Handler: mark-all-as-read/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        MarkAllAsRead:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/me/notifications/mark-all-read
+            Method: patch
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - mark-all-as-read/app.ts
+
+  # GET UNREAD COUNT
+  GetUnreadCountFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/notifications
+      Handler: get-unread-count/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetUnreadCount:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/me/notifications/unread-count
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-unread-count/app.ts
+
+  # GET NOTIFICATIONS
+  GetNotificationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/notifications
+      Handler: get/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetNotifications:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/me/notifications
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get/app.ts
+
+  # GET ALL AVAILABLE CHANNELS
+  GetAllAvailableChannelsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels
+      Handler: get-all-available/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetAllAvailableChannels:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels/discover/available
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-all-available/app.ts
+
+  # GET USER'S CHANNELS
+  GetUserChannelsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels
+      Handler: get-user-channels/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetUserChannels:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/members/me/channels
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-user-channels/app.ts
+
+  # ADD MEMBERS TO CHANNEL
+  AddMembersToChannelFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels
+      Handler: add-members/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        AddMembersToChannel:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels/{channelId}/members
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - add-members/app.ts
+
+  # REMOVE MEMBERS FROM CHANNEL
+  RemoveMembersFromChannelFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels
+      Handler: remove-members/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        RemoveMembersFromChannel:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels/{channelId}/members
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - remove-members/app.ts
+
+  # GET CHANNEL MESSAGES
+  GetChannelMessagesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels
+      Handler: get-messages/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetChannelMessages:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels/{channelId}/messages
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-messages/app.ts
+
+  # GET CHANNEL MEMBERS
+  GetChannelMembersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels
+      Handler: get-members/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetChannelMembers:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels/{channelId}/members
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-members/app.ts
+
+  # CREATE CHANNEL
+  CreateChannelFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels
+      Handler: create/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        CreateChannel:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - create/app.ts
+
+  # GET CHANNEL BY ID
+  GetChannelByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels
+      Handler: get-by-id/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetChannelById:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels/{channelId}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-by-id/app.ts
+
+  # UPDATE CHANNEL
+  UpdateChannelFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels
+      Handler: update/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        UpdateChannel:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels/{channelId}
+            Method: patch
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - update/app.ts
+
+  # DELETE CHANNEL
+  DeleteChannelFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels
+      Handler: delete/delete-channel.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Environment:
+        Variables:
+          MESSAGE_CLEANUP_FUNCTION_ARN: !GetAtt MessageCleanupFunction.Arn
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: '2012-10-17'
+          Statement:
+            Effect: Allow
+            Action:
+              - lambda:InvokeFunctionUrl
+              - lambda:InvokeFunction
+              - lambda:InvokeAsync
+            Resource: !Sub arn:aws:lambda:*:${AWS::AccountId}:function:*
+      Events:
+        DeleteChannel:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/channels/{channelId}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - delete/delete-channel.ts
+        External:
+          - '@aws-sdk/*'
+
+  # MESSAGE CLEANUP - Background job only (no API)
+  MessageCleanupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/channels
+      Handler: delete/message-cleanup.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Timeout: 900 # 15 minutes for large channels
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - delete/message-cleanup.ts
+
+  # CREATE OR GET CONVERSATION
+  CreateOrGetConversationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/conversations
+      Handler: create-or-get/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        CreateOrGetConversation:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/conversations
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - create-or-get/app.ts
+
+  # GET ALL CONVERSATIONS
+  GetConversationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/conversations
+      Handler: get/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetConversations:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/conversations
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get/app.ts
+
+  # GET A SINGLE CONVERSATION BY ID
+  GetConversationByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/conversations
+      Handler: get-by-id/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetConversationById:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/conversations/{conversationId}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-by-id/app.ts
+
+  # GET MESSAGES FOR A CONVERSATION
+  GetConversationMessagesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/conversations
+      Handler: get-messages/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetConversationMessages:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/conversations/{conversationId}/messages
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-messages/app.ts
+
+  # DELETE A CONVERSATION
+  DeleteConversationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/conversations
+      Handler: delete/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        DeleteConversation:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/conversations/{conversationId}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - delete/app.ts
+
+  # GET CURRENT MEMBER
+  GetCurrentMemberFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/members/current
+      Handler: app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetCurrentMember:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/members/me/current
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - app.ts
+
+  # GET MEMBERS
+  GetMembersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/members/get
+      Handler: app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetMembers:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/members
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - app.ts
+
+  # GET MEMBER BY ID
+  GetMemberByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/members/get-by-id
+      Handler: app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetMemberById:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/members/{memberId}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - app.ts
+
+  # UPDATE MEMBER
+  UpdateMemberFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/members/update
+      Handler: app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        UpdateMember:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/members/{memberId}
+            Method: put
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - app.ts
+
+  # REMOVE MEMBER
+  RemoveMemberFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/members/remove
+      Handler: app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        RemoveMember:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/members/{memberId}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - app.ts
+
+  # SIGN UP
+  SignUpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth
+      Handler: sign-up/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        SignUp:
+          Type: Api
+          Properties:
+            Path: /auth/sign-up
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - sign-up/app.ts
+
+  # SIGN IN
+  SignInFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth
+      Handler: sign-in/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        SignIn:
+          Type: Api
+          Properties:
+            Path: /auth/sign-in
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - sign-in/app.ts
+
+  # GET INVITE LINK
+  GetInviteLinkFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth
+      Handler: get-invite-link/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetInviteLink:
+          Type: Api
+          Properties:
+            Path: /auth/invite-link
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-invite-link/app.ts
+
+  # SIGN OUT
+  SignOutFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth
+      Handler: sign-out/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        SignOut:
+          Type: Api
+          Properties:
+            Path: /auth/sign-out
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - sign-out/app.ts
+
+  # GET CURRENT USER
+  GetCurrentUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth
+      Handler: current-user/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetCurrentUser:
+          Type: Api
+          Properties:
+            Path: /auth/user
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - current-user/app.ts
+
+  # UPDATE PROFILE
+  UpdateProfileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth
+      Handler: update-profile/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        UpdateProfile:
+          Type: Api
+          Properties:
+            Path: /auth/profile
+            Method: put
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - update-profile/app.ts
+
+  # UPDATE USER PREFERENCES
+  UpdateUserPreferencesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth
+      Handler: update-user-preferences/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        UpdateUserPreferences:
+          Type: Api
+          Properties:
+            Path: /auth/user-preferences
+            Method: patch
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - update-user-preferences/app.ts
+
+  # RESET PASSWORD REQUEST
+  ResetPasswordRequestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth
+      Handler: reset-password-request/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        ResetPasswordRequest:
+          Type: Api
+          Properties:
+            Path: /auth/reset-password
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - reset-password-request/app.ts
+
+  # UPDATE PASSWORD
+  UpdatePasswordFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth
+      Handler: update-password/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        UpdatePassword:
+          Type: Api
+          Properties:
+            Path: /auth/update-password
+            Method: put
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - update-password/app.ts
+
+  # REFRESH TOKEN
+  RefreshTokenFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth
+      Handler: refresh-token/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        RefreshToken:
+          Type: Api
+          Properties:
+            Path: /auth/refresh
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - refresh-token/app.ts
+
+  # VERIFY EMAIL
+  VerifyEmailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth
+      Handler: verify-email/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        VerifyEmail:
+          Type: Api
+          Properties:
+            Path: /auth/verify
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - verify-email/app.ts
+
+  # TOGGLE REACTION
+  ToggleReactionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/reactions
+      Handler: toggle/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        ToggleReaction:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/messages/{messageId}/reactions/toggle
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - toggle/app.ts
+
+  # GET REACTIONS
+  GetReactionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/reactions
+      Handler: get/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetReactions:
+          Type: Api
+          Properties:
+            Path: /reactions
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get/app.ts
+
+  # REMOVE REACTION
+  RemoveReactionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/reactions
+      Handler: remove/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        RemoveReaction:
+          Type: Api
+          Properties:
+            Path: /reactions/{reactionId}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - remove/app.ts
+
+  # GET USER REACTIONS
+  GetUserReactionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/reactions
+      Handler: user-reactions/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetUserReactions:
+          Type: Api
+          Properties:
+            Path: /reactions/user
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - user-reactions/app.ts
+
+  # GET REACTION STATS
+  GetReactionStatsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/reactions
+      Handler: stats/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GetReactionStats:
+          Type: Api
+          Properties:
+            Path: /reactions/stats/{messageId}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - stats/app.ts
+
+  InitiateGoogleAuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/auth
+      Handler: google-auth/app.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Tracing: Active
+      Events:
+        InitiateGoogleAuth:
+          Type: Api
+          Properties:
+            Path: /auth/google
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - google-auth/app.ts
+
+  # GENERATE PRE-SIGNED URL
+  GeneratePresignedUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/attachments/manager
+      Handler: generate-presigned-url.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        GeneratePresignedUrl:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/attachments/generate/presigned-url
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - generate-presigned-url.ts
+
+  ConfirmUploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/attachments/manager
+      Handler: confirm-upload.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        ConfirmUpload:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/attachments/{attachmentId}/confirm
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - confirm-upload.ts
+
+  DeleteAttachmentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/attachments/manager
+      Handler: delete-attachment.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Events:
+        DeleteAttachment:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/attachments/{attachmentId}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - delete-attachment.ts
+
+  # 1. SQS Queue for message processing
+  EmbeddingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AWS::StackName}-embedding-queue
+      VisibilityTimeout: 300 # 5 minutes (match Lambda timeout)
+      MessageRetentionPeriod: 1209600 # 14 days
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt EmbeddingDLQ.Arn
+        maxReceiveCount: 3
+
+  EmbeddingDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AWS::StackName}-embedding-dlq
+
+  # 2. EventBridge Rule
+  EmbeddingScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: 'rate(5 minutes)'
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt EmbeddingOrchestratorFunction.Arn
+          Id: 'EmbeddingOrchestratorTarget'
+
+  # 3. Lambda Functions
+  EmbeddingOrchestratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/embeddings
+      Handler: orchestrator/app.handler
+      Runtime: nodejs22.x
+      Timeout: 60
+      MemorySize: 512
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+                - sqs:SendMessageBatch
+              Resource: !GetAtt EmbeddingQueue.Arn
+            - Effect: Allow
+              Action:
+                - sqs:ReceiveMessage
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+              Resource: !GetAtt EmbeddingQueue.Arn
+      Environment:
+        Variables:
+          SQS_QUEUE_URL: !Ref EmbeddingQueue
+          BATCH_SIZE: 100
+          MAX_MESSAGES_PER_RUN: 1000
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - orchestrator/app.ts
+
+  EmbeddingWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/embeddings
+      Handler: worker/app.handler
+      Runtime: nodejs22.x
+      Timeout: 300 # 5 minutes for processing
+      MemorySize: 1024 # More memory for vector operations
+      Environment:
+        Variables:
+          EMBEDDING_MODEL: 'text-embedding-3-small'
+          SIMILARITY_THRESHOLD: '0.7'
+          CONTEXT_TIME_WINDOW_HOURS: '48'
+          BATCH_SIZE: '100'
+          MODEL_MAX_TOKENS: '8191'
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+                - sqs:SendMessageBatch
+              Resource: !GetAtt EmbeddingQueue.Arn
+            - Effect: Allow
+              Action:
+                - sqs:ReceiveMessage
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+              Resource: !GetAtt EmbeddingQueue.Arn
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt EmbeddingQueue.Arn
+            BatchSize: 25 # Process 25 messages at a time
+            MaximumBatchingWindowInSeconds: 20
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - worker/app.ts
+
+  SemanticSearchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/search
+      Handler: service/app.handler
+      Runtime: nodejs22.x
+      Timeout: 30
+      MemorySize: 512
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/search/semantic
+            Method: post
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - service/app.ts
+
+  # 4. Permissions
+  EmbeddingOrchestratorInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref EmbeddingOrchestratorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EmbeddingScheduleRule.Arn
