@@ -33,8 +33,8 @@ export const handler = withCors(
       }
 
       const allMemberIds = Array.from(new Set([currentMember.id, ...participantMemberIds]));
-      if (allMemberIds.length < 2) {
-        return errorResponse('At least two distinct members are required', 400);
+      if (allMemberIds.length < 1) {
+        return errorResponse('At least one member is required', 400);
       }
 
       const { rows: members } = await client.query(
@@ -110,7 +110,7 @@ export const handler = withCors(
         member_count: allMemberIds.length,
         update_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
-        is_group_conversation: true,
+        is_group_conversation: allMemberIds.length > 2,
         members: members,
         other_members: members.filter((member) => member.id !== currentMember.id),
       });

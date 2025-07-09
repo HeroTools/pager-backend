@@ -53,19 +53,30 @@ export const handler = withCors(
             ),
             new_channel AS (
                 INSERT INTO channels (name, workspace_id, channel_type, description, is_default)
-                SELECT 'general', workspace_id, 'public', 'This is the one channel that will always include everyone. It's a great place for announcements and team-wide conversations.', true FROM new_member
+                SELECT 'general', workspace_id, 'public', 'This is the one channel that will always include everyone. It''s a great place for announcements and team-wide conversations.', true FROM new_member
                 RETURNING id, workspace_id
             ),
             channel_membership AS (
                 INSERT INTO channel_members (workspace_member_id, channel_id, role, notifications_enabled)
                 SELECT nm.id, nc.id, 'admin', true 
                 FROM new_member nm, new_channel nc
+            ),
+            new_conversation AS (
+                INSERT INTO conversations (workspace_id)
+                SELECT workspace_id FROM new_member
+                RETURNING id, workspace_id
+            ),
+            conversation_membership AS (
+                INSERT INTO conversation_members (conversation_id, workspace_member_id)
+                SELECT nc.id, nm.id
+                FROM new_conversation nc, new_member nm
             )
             SELECT 
                 nw.id as workspace_id,
                 nm.id as member_id,
-                nc.id as channel_id
-            FROM new_workspace nw, new_member nm, new_channel nc
+                nc.id as channel_id,
+                nconv.id as conversation_id
+            FROM new_workspace nw, new_member nm, new_channel nc, new_conversation nconv
             `,
         [trimmedName, userId],
       );
