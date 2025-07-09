@@ -58,9 +58,22 @@ export const handler = withCors(
           password,
           options: { data: { name } },
         });
-        if (signUpError || !signUpData.user || !signUpData.session) {
+        if (signUpError || !signUpData.user) {
           return errorResponse(signUpError?.message || 'Failed to create user', 400);
         }
+
+        // Handle the case where session is null due to email confirmation requirement
+        if (!signUpData.session) {
+          return successResponse(
+            {
+              message: 'Registration successful. Please check your email to confirm your account.',
+              user: signUpData.user,
+              requires_email_confirmation: true,
+            },
+            201,
+          );
+        }
+
         authResult = signUpData;
       }
 
@@ -82,6 +95,78 @@ export const handler = withCors(
           return errorResponse(message, statusCode);
         }
         workspaceJoined = data;
+
+        // Add user to workspace channels and create self-conversation
+        if (workspaceJoined) {
+          try {
+            // Get the workspace member ID for the newly joined user
+            const { data: workspaceMember, error: memberError } = await supabase
+              .from('workspace_members')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('workspace_id', workspaceJoined.id)
+              .single();
+
+            if (memberError || !workspaceMember) {
+              console.error(
+                'Error fetching workspace member for channel/conversation setup:',
+                memberError,
+              );
+            } else {
+              // Add user to the general channel
+              const { data: generalChannel, error: channelError } = await supabase
+                .from('channels')
+                .select('id')
+                .eq('workspace_id', workspaceJoined.id)
+                .eq('is_default', true)
+                .single();
+
+              if (channelError || !generalChannel) {
+                console.error('Error fetching general channel:', channelError);
+              } else {
+                const { error: channelMemberError } = await supabase
+                  .from('channel_members')
+                  .insert({
+                    workspace_member_id: workspaceMember.id,
+                    channel_id: generalChannel.id,
+                    role: 'member',
+                    notifications_enabled: true,
+                  });
+
+                if (channelMemberError) {
+                  console.error('Error adding user to general channel:', channelMemberError);
+                }
+              }
+
+              // Create self-conversation
+              const { data: conversation, error: conversationError } = await supabase
+                .from('conversations')
+                .insert({ workspace_id: workspaceJoined.id })
+                .select('id')
+                .single();
+
+              if (conversationError || !conversation) {
+                console.error('Error creating self-conversation:', conversationError);
+              } else {
+                // Add user to the conversation
+                const { error: memberInsertError } = await supabase
+                  .from('conversation_members')
+                  .insert({
+                    conversation_id: conversation.id,
+                    workspace_member_id: workspaceMember.id,
+                  });
+
+                if (memberInsertError) {
+                  console.error('Error adding user to self-conversation:', memberInsertError);
+                  // Clean up the conversation if member insertion fails
+                  await supabase.from('conversations').delete().eq('id', conversation.id);
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Error in channel/conversation setup process:', error);
+          }
+        }
       } else if (isNewUser) {
         const { error: profileError } = await supabase
           .from('users')
@@ -101,16 +186,16 @@ export const handler = withCors(
           .from('workspace_members')
           .select(
             `
-                    role,
-                    workspaces (
-                        id,
-                        name,
-                        image,
-                        created_at,
-                        updated_at,
-                        is_active
-                    )
-                `,
+                      role,
+                      workspaces (
+                          id,
+                          name,
+                          image,
+                          created_at,
+                          updated_at,
+                          is_active
+                      )
+                  `,
           )
           .eq('user_id', userId)
           .eq('workspaces.is_active', true)
