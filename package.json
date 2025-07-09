@@ -7,6 +7,7 @@
   "dependencies": {
     "@aws-sdk/client-lambda": "^3.840.0",
     "@aws-sdk/client-sqs": "^3.840.0",
+    "@aws-sdk/client-ssm": "^3.840.0",
     "@supabase/supabase-js": "^2.50.3",
     "openai": "^5.8.3",
     "pg": "^8.16.3",
@@ -14,26 +15,30 @@
     "zod": "^3.25.67"
   },
   "scripts": {
-    "unit": "jest",
     "lint": "eslint '*.ts' --quiet --fix",
     "compile": "tsc",
     "format": "prettier --write ./functions",
-    "test": "npm run compile && npm run unit",
-    "local": "sam build && sam local start-api"
+    "build": "sam build",
+    "setup:local": "cp config/parameters.example.json config/parameters.json && echo '✅ Edit config/parameters.json with your values'",
+    "setup:aws": "tsx scripts/setup-parameters.ts",
+    "generate:env": "tsx scripts/generate-env.ts",
+    "local:dev": "npm run generate:env dev && npm run build && sam local start-api -p 8081 --env-vars env.json --profile unowned-prod",
+    "local:prod": "npm run generate:env prod && npm run build && sam local start-api -p 8081 --env-vars env.json --profile unowned-prod",
+    "deploy:dev": "npm run setup:aws dev && npm run build && sam deploy --config-env dev --profile unowned-prod",
+    "deploy:prod": "npm run setup:aws prod && npm run build && sam deploy --config-env prod --profile unowned-prod"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.109",
-    "@types/jest": "^30.0.0",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.0.11",
     "@typescript-eslint/eslint-plugin": "^8.36.0",
     "@typescript-eslint/parser": "^8.36.0",
     "eslint": "^9.30.1",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-prettier": "^5.5.1",
-    "jest": "^30.0.4",
+    "js-yaml": "^4.1.0",
     "prettier": "^3.6.2",
-    "ts-jest": "^29.0.5",
-    "ts-node": "^10.9.1",
+    "tsx": "^4.20.3",
     "typescript": "^5.8.3"
   }
 }
