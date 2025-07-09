@@ -1,28 +1,31 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { supabase } from './utils/supabase-client';
-import { successResponse, errorResponse } from './utils/response';
+import { supabase } from '../../common/utils/supabase-client';
+import { successResponse, errorResponse } from '../../common/utils/response';
+import { withCors } from '../../common/utils/cors';
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const handler = withCors(
+  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
-        const { email } = JSON.parse(event.body || '{}');
+      const { email } = JSON.parse(event.body || '{}');
 
-        if (!email) {
-            return errorResponse('Email is required', 400);
-        }
+      if (!email) {
+        return errorResponse('Email is required', 400);
+      }
 
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: `${process.env.FRONTEND_URL}/reset-password`,
-        });
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${process.env.FRONTEND_URL}/reset-password`,
+      });
 
-        if (error) {
-            return errorResponse(error.message, 400);
-        }
+      if (error) {
+        return errorResponse(error.message, 400);
+      }
 
-        return successResponse({
-            message: 'Password reset email sent successfully',
-        });
+      return successResponse({
+        message: 'Password reset email sent successfully',
+      });
     } catch (error) {
-        console.error('Error requesting password reset:', error);
-        return errorResponse('Internal server error', 500);
+      console.error('Error requesting password reset:', error);
+      return errorResponse('Internal server error', 500);
     }
-};
+  },
+);

@@ -1,22 +1,25 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { getUserIdFromToken } from './helpers/auth';
-import { errorResponse, successResponse } from './utils/response';
-import { supabase } from './utils/supabase-client';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import { supabase } from '../../common/utils/supabase-client';
+import { withCors } from '../../common/utils/cors';
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const handler = withCors(
+  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
-        const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(event.headers.Authorization);
 
-        if (!userId) {
-            return errorResponse('Unauthorized', 401);
-        }
+      if (!userId) {
+        return errorResponse('Unauthorized', 401);
+      }
 
-        // Get all workspace memberships for user
-        const { data: members, error: membersError } = await supabase
-            .from('workspace_members')
-            .select(
-                `
+      // Get all workspace memberships for user
+      const { data: members, error: membersError } = await supabase
+        .from('workspace_members')
+        .select(
+          `
           workspace_id,
+          role,
           workspaces (
             id,
             name,
@@ -25,18 +28,19 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             updated_at
           )
         `,
-            )
-            .eq('user_id', userId);
+        )
+        .eq('user_id', userId);
 
-        if (membersError) {
-            return errorResponse(membersError.message, 500);
-        }
+      if (membersError) {
+        return errorResponse(membersError.message, 500);
+      }
 
-        const workspaces = members?.map((member) => member.workspaces).filter(Boolean) || [];
+      const workspaces = members?.map((member) => member.workspaces).filter(Boolean) || [];
 
-        return successResponse(workspaces);
+      return successResponse(workspaces);
     } catch (error) {
-        console.error('Error getting workspaces:', error);
-        return errorResponse('Internal server error', 500);
+      console.error('Error getting workspaces:', error);
+      return errorResponse('Internal server error', 500);
     }
-};
+  },
+);

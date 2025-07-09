@@ -1,35 +1,38 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { successResponse, errorResponse } from './utils/response';
 import { createClient } from '@supabase/supabase-js';
+import { successResponse, errorResponse } from '../../common/utils/response';
+import { withCors } from '../../common/utils/cors';
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const handler = withCors(
+  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
-        const authHeader = event.headers.Authorization;
+      const authHeader = event.headers.Authorization;
 
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return errorResponse('Authorization header required', 401);
-        }
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return errorResponse('Authorization header required', 401);
+      }
 
-        const token = authHeader.substring(7);
+      const token = authHeader.substring(7);
 
-        // Create a new client with the user's session
-        const userSupabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
-            global: {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-            },
-        });
+      // Create a new client with the user's session
+      const userSupabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      });
 
-        const { error } = await userSupabase.auth.signOut();
+      const { error } = await userSupabase.auth.signOut();
 
-        if (error) {
-            return errorResponse(error.message, 400);
-        }
+      if (error) {
+        return errorResponse(error.message, 400);
+      }
 
-        return successResponse({ message: 'Signed out successfully' });
+      return successResponse({ message: 'Signed out successfully' });
     } catch (error) {
-        console.error('Error signing out:', error);
-        return errorResponse('Internal server error', 500);
+      console.error('Error signing out:', error);
+      return errorResponse('Internal server error', 500);
     }
-};
+  },
+);

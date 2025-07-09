@@ -1,47 +1,56 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
-import dbPool from './utils/create-db-pool';
-import { getUserIdFromToken } from './helpers/auth';
-import { successResponse, errorResponse } from './utils/response';
-import { ConversationData, MessageWithUser, ConversationMemberWithUser } from './types';
+import dbPool from '../../common/utils/create-db-pool';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { successResponse, errorResponse } from '../../common/utils/response';
+import type { ConversationMemberWithUser } from '../types';
+import type { MessageWithUser } from '../../common/types';
+import { withCors } from '../../common/utils/cors';
 
-// Validation schemas
 const PathParamsSchema = z.object({
-    id: z.string().uuid(),
-    workspaceId: z.string().uuid(),
+  conversationId: z.string().uuid('conversationId is required'),
+  workspaceId: z.string().uuid('workspaceId is required'),
 });
 
 const QueryParamsSchema = z.object({
-    limit: z.coerce.number().min(1).max(100).default(50),
-    cursor: z.string().uuid().optional(),
-    before: z.string().datetime().optional(),
-    include_members: z.enum(['true', 'false']).default('true'),
-    include_reactions: z.enum(['true', 'false']).default('true'),
-    include_attachments: z.enum(['true', 'false']).default('true'),
-    include_count: z.enum(['true', 'false']).default('false'),
+  limit: z.coerce.number().min(1).max(100).default(50),
+  cursor: z.string().uuid().optional(),
+  before: z.string().datetime().optional(),
+  include_members: z.enum(['true', 'false']).default('true'),
+  include_reactions: z.enum(['true', 'false']).default('true'),
+  include_attachments: z.enum(['true', 'false']).default('true'),
+  include_count: z.enum(['true', 'false']).default('false'),
 });
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const handler = withCors(
+  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     let client: PoolClient | null = null;
     try {
-        // Parse and validate
-        const pathParams = PathParamsSchema.parse(event.pathParameters);
-        const queryParams = QueryParamsSchema.parse(event.queryStringParameters || {});
-        const { id: conversationId, workspaceId } = pathParams;
-        const { limit, cursor, before, include_members, include_reactions, include_attachments, include_count } =
-            queryParams;
+      // Parse and validate
+      const pathParams = PathParamsSchema.parse(event.pathParameters);
+      const queryParams = QueryParamsSchema.parse(event.queryStringParameters || {});
+      const { conversationId, workspaceId } = pathParams;
+      const {
+        limit,
+        cursor,
+        before,
+        include_members,
+        include_reactions,
+        include_attachments,
+        include_count,
+      } = queryParams;
 
-        // Auth
-        const userId = await getUserIdFromToken(event.headers.Authorization);
-        if (!userId) {
-            return errorResponse('Unauthorized', 401);
-        }
+      // Auth
+      const userId = await getUserIdFromToken(event.headers.Authorization);
+      if (!userId) {
+        return errorResponse('Unauthorized', 401);
+      }
 
-        client = await dbPool.connect();
+      client = await dbPool.connect();
 
-        // Mega-query: top-level messages + thread stats + reactions + attachments
-        const mainQuery = `
+      // Mega-query: top-level messages + thread stats + reactions + attachments
+      const mainQuery = `
       WITH cursor_timestamp AS (
         SELECT created_at
         FROM messages
@@ -233,48 +242,48 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         ca.workspace_member_id, ca.is_member;
     `;
 
-        const { rows } = await client.query(mainQuery, [
-            conversationId, // $1
-            userId, // $2
-            cursor || null, // $3
-            workspaceId, // $4
-            before || null, // $5
-            limit, // $6
-            include_reactions, // $7
-            include_attachments, // $8
-        ]);
+      const { rows } = await client.query(mainQuery, [
+        conversationId, // $1
+        userId, // $2
+        cursor || null, // $3
+        workspaceId, // $4
+        before || null, // $5
+        limit, // $6
+        include_reactions, // $7
+        include_attachments, // $8
+      ]);
 
-        if (rows.length === 0) {
-            return errorResponse('Conversation not found or access denied', 403);
-        }
-        const result = rows[0];
-        if (!result.is_member) {
-            return errorResponse('Access denied', 403);
-        }
+      if (rows.length === 0) {
+        return errorResponse('Conversation not found or access denied', 403);
+      }
+      const result = rows[0];
+      if (!result.is_member) {
+        return errorResponse('Access denied', 403);
+      }
 
-        // Pagination
-        const raw = result.messages_data || [];
-        const hasMore = raw.length > limit;
-        const slice = hasMore ? raw.slice(0, limit) : raw;
-        const nextCursor = hasMore && slice.length > 0 ? slice[slice.length - 1].id : null;
+      // Pagination
+      const raw = result.messages_data || [];
+      const hasMore = raw.length > limit;
+      const slice = hasMore ? raw.slice(0, limit) : raw;
+      const nextCursor = hasMore && slice.length > 0 ? slice[slice.length - 1].id : null;
 
-        // Reactions grouping
-        const messages: MessageWithUser[] = slice.map((msg: any) => {
-            const map: Record<string, any> = {};
-            (msg.reactions || []).forEach((r: any) => {
-                if (!map[r.value]) {
-                    map[r.value] = { id: `${msg.id}_${r.value}`, value: r.value, count: 0, users: [] };
-                }
-                map[r.value].count++;
-                map[r.value].users.push({ id: r.user_id, name: r.user_name });
-            });
-            return { ...msg, reactions: Object.values(map) };
+      // Reactions grouping
+      const messages: MessageWithUser[] = slice.map((msg: any) => {
+        const map: Record<string, any> = {};
+        (msg.reactions || []).forEach((r: any) => {
+          if (!map[r.value]) {
+            map[r.value] = { id: `${msg.id}_${r.value}`, value: r.value, count: 0, users: [] };
+          }
+          map[r.value].count++;
+          map[r.value].users.push({ id: r.user_id, name: r.user_name });
         });
+        return { ...msg, reactions: Object.values(map) };
+      });
 
-        // Conversation members
-        let conversationMembers: ConversationMemberWithUser[] = [];
-        if (include_members === 'true') {
-            const membersQuery = `
+      // Conversation members
+      let conversationMembers: ConversationMemberWithUser[] = [];
+      if (include_members === 'true') {
+        const membersQuery = `
         SELECT
           cm.id,
           cm.conversation_id,
@@ -300,68 +309,72 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         WHERE cm.conversation_id = $1 AND cm.left_at IS NULL
         ORDER BY cm.joined_at ASC
       `;
-            const { rows: memRows } = await client.query(membersQuery, [conversationId, workspaceId]);
-            conversationMembers = memRows.map((m) => ({
-                id: m.id,
-                conversation_id: m.conversation_id,
-                workspace_member_id: m.workspace_member_id,
-                joined_at: m.joined_at,
-                left_at: m.left_at,
-                last_read_message_id: m.last_read_message_id,
-                user: {
-                    id: m.user_id,
-                    name: m.user_name,
-                    email: m.user_email,
-                    image: m.user_image,
-                },
-                ...(m.user_status && {
-                    status: {
-                        status: m.user_status,
-                        custom_status: m.custom_status,
-                        status_emoji: m.status_emoji,
-                        last_seen_at: m.last_seen_at,
-                    },
-                }),
-            }));
-        }
+        const { rows: memRows } = await client.query(membersQuery, [conversationId, workspaceId]);
+        conversationMembers = memRows.map((m) => ({
+          id: m.id,
+          conversation_id: m.conversation_id,
+          workspace_member_id: m.workspace_member_id,
+          joined_at: m.joined_at,
+          left_at: m.left_at,
+          last_read_message_id: m.last_read_message_id,
+          user: {
+            id: m.user_id,
+            name: m.user_name,
+            email: m.user_email,
+            image: m.user_image,
+          },
+          ...(m.user_status && {
+            status: {
+              status: m.user_status,
+              custom_status: m.custom_status,
+              status_emoji: m.status_emoji,
+              last_seen_at: m.last_seen_at,
+            },
+          }),
+        }));
+      }
 
-        // Total count
-        let totalCount = 0;
-        if (include_count === 'true') {
-            const countQuery = `
+      // Total count
+      let totalCount = 0;
+      if (include_count === 'true') {
+        const countQuery = `
         SELECT COUNT(*) AS total
         FROM messages
         WHERE conversation_id = $1 AND deleted_at IS NULL
       `;
-            const { rows: cntRows } = await client.query(countQuery, [conversationId]);
-            totalCount = parseInt(cntRows[0]?.total || '0', 10);
-        }
+        const { rows: cntRows } = await client.query(countQuery, [conversationId]);
+        totalCount = parseInt(cntRows[0]?.total || '0', 10);
+      }
 
-        return successResponse({
-            conversation: {
-                id: result.conversation_id,
-                workspace_id: result.workspace_id,
-                created_at: result.conversation_created_at,
-                updated_at: result.conversation_updated_at,
-            },
-            messages,
-            members: conversationMembers,
-            pagination: { hasMore, nextCursor, totalCount },
-            user_conversation_data: {
-                member_id: result.user_member_id,
-                last_read_message_id: result.user_last_read,
-                workspace_member_id: result.user_workspace_member_id,
-            },
-        });
+      return successResponse({
+        conversation: {
+          id: result.conversation_id,
+          workspace_id: result.workspace_id,
+          created_at: result.conversation_created_at,
+          updated_at: result.conversation_updated_at,
+        },
+        messages,
+        members: conversationMembers,
+        pagination: { hasMore, nextCursor, totalCount },
+        user_conversation_data: {
+          member_id: result.user_member_id,
+          last_read_message_id: result.user_last_read,
+          workspace_member_id: result.user_workspace_member_id,
+        },
+      });
     } catch (error) {
-        console.error('Error fetching conversation data:', error);
-        if (error instanceof z.ZodError) {
-            return errorResponse(`Validation error: ${error.errors.map((e) => e.message).join(', ')}`, 400);
-        }
-        return errorResponse('Internal server error', 500);
+      console.error('Error fetching conversation data:', error);
+      if (error instanceof z.ZodError) {
+        return errorResponse(
+          `Validation error: ${error.errors.map((e) => e.message).join(', ')}`,
+          400,
+        );
+      }
+      return errorResponse('Internal server error', 500);
     } finally {
-        if (client) {
-            client.release();
-        }
+      if (client) {
+        client.release();
+      }
     }
-};
+  },
+);

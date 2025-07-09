@@ -1,34 +1,36 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { getUserIdFromToken } from './helpers/auth';
-import { getMember } from './helpers/get-member';
-import { successResponse, errorResponse } from './utils/response';
-import { supabase } from './utils/supabase-client';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { getMember } from '../../common/helpers/get-member';
+import { successResponse, errorResponse } from '../../common/utils/response';
+import { supabase } from '../../common/utils/supabase-client';
+import { withCors } from '../../common/utils/cors';
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const handler = withCors(
+  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
-        const authHeader = event.headers.Authorization || event.headers.authorization;
-        const userId = authHeader ? await getUserIdFromToken(authHeader) : null;
+      const authHeader = event.headers.Authorization || event.headers.authorization;
+      const userId = authHeader ? await getUserIdFromToken(authHeader) : null;
 
-        if (!userId) {
-            return successResponse([]);
-        }
+      if (!userId) {
+        return successResponse([]);
+      }
 
-        const workspaceId = event.pathParameters?.workspaceId;
-        if (!workspaceId) {
-            return errorResponse('Workspace ID is required', 400);
-        }
+      const workspaceId = event.pathParameters?.workspaceId;
+      if (!workspaceId) {
+        return errorResponse('Workspace ID is required', 400);
+      }
 
-        // Make sure they're in the workspace
-        const currentMember = await getMember(workspaceId, userId);
-        if (!currentMember) {
-            return successResponse([]);
-        }
+      // Make sure they're in the workspace
+      const currentMember = await getMember(workspaceId, userId);
+      if (!currentMember) {
+        return successResponse([]);
+      }
 
-        // Join and alias `users` as `user`
-        const { data: members, error } = await supabase
-            .from('workspace_members')
-            .select(
-                `
+      // Join and alias `users` as `user`
+      const { data: members, error } = await supabase
+        .from('workspace_members')
+        .select(
+          `
         *,
         user:users!workspace_members_user_id_fkey1(
           id,
@@ -37,18 +39,19 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           image
         )
       `,
-            )
-            .eq('workspace_id', workspaceId)
-            .order('created_at', { ascending: true });
+        )
+        .eq('workspace_id', workspaceId)
+        .order('created_at', { ascending: true });
 
-        if (error) {
-            throw error;
-        }
+      if (error) {
+        throw error;
+      }
 
-        // members now each have a `user` object and no `users` key
-        return successResponse(members || []);
+      // members now each have a `user` object and no `users` key
+      return successResponse(members || []);
     } catch (err) {
-        console.error('Error getting members:', err);
-        return errorResponse('Internal server error', 500);
+      console.error('Error getting members:', err);
+      return errorResponse('Internal server error', 500);
     }
-};
+  },
+);

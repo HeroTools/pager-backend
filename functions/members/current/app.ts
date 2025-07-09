@@ -1,35 +1,38 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { getUserIdFromToken } from './helpers/auth';
-import { getMember } from './helpers/get-member';
-import { successResponse, errorResponse } from './utils/response';
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { getMember } from '../../common/helpers/get-member';
+import { successResponse, errorResponse } from '../../common/utils/response';
+import { withCors } from '../../common/utils/cors';
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const handler = withCors(
+  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
-        const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(event.headers.Authorization);
 
-        console.log(userId);
+      console.log(userId);
 
-        if (!userId) {
-            return successResponse(null);
-        }
+      if (!userId) {
+        return successResponse(null);
+      }
 
-        const workspaceId = event.pathParameters?.workspaceId;
+      const workspaceId = event.pathParameters?.workspaceId;
 
-        if (!workspaceId) {
-            return errorResponse('Workspace ID is required', 400);
-        }
+      if (!workspaceId) {
+        return errorResponse('Workspace ID is required', 400);
+      }
 
-        const member = await getMember(workspaceId, userId);
+      const member = await getMember(workspaceId, userId);
 
-        console.log(member);
+      console.log(member);
 
-        if (!member) {
-            return successResponse(null);
-        }
+      if (!member) {
+        return successResponse(null);
+      }
 
-        return successResponse(member);
+      return successResponse(member);
     } catch (error) {
-        console.error('Error getting current member:', error);
-        return errorResponse('Internal server error', 500);
+      console.error('Error getting current member:', error);
+      return errorResponse('Internal server error', 500);
     }
-};
+  },
+);
