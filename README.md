@@ -225,25 +225,6 @@ The API includes endpoints for:
 
 Full API documentation is available at `/docs` when running locally.
 
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**"Invalid URL" errors in local development**
-
-- Ensure you've run `npm run setup:local` and configured your `config/parameters.json`
-- Check that `supabase-url` is set correctly
-
-**"Parameter not found" errors**
-
-- Run `npm run setup:aws dev` to populate Parameter Store
-- Verify your AWS credentials are configured
-
-**Build failures**
-
-- Ensure TypeScript compiles without errors: `npm run compile`
-- Check that all dependencies are installed: `npm install`
-
 ### Getting Help
 
 1. Check the [Issues](https://github.com/yourusername/unowned-backend/issues) page
@@ -261,7 +242,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 👥 Team
 
 - **Zach Bresler** - _CTO_ - [@zachbresler](https://github.com/zachbresler)
-- **Gabriel Stein** - _COO_ - [@gabrielstein](https://github.com/gabrielstein)
+- **Gabriel Stein** - _CEO_ - [@gabrielstein](https://github.com/gabrielste1n)
 
 ## 🙏 Acknowledgments
 
