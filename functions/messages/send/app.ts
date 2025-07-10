@@ -1,15 +1,15 @@
-import { PoolClient } from 'pg';
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { z } from 'zod';
 import { LambdaClient } from '@aws-sdk/client-lambda';
-import dbPool from '../../common/utils/create-db-pool';
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { PoolClient } from 'pg';
+import { z } from 'zod';
 import { getUserIdFromToken } from '../../common/helpers/auth';
-import { errorResponse, successResponse } from '../../common/utils/response';
-import { broadcastMessage, broadcastTypingStatus } from '../helpers/broadcasting';
-import { CompleteMessage } from '../types';
 import { invokeLambdaFunction } from '../../common/helpers/invoke-lambda';
-import { deltaToMarkdown, deltaToPlainText } from '../helpers/quill-delta-converters';
 import { withCors } from '../../common/utils/cors';
+import dbPool from '../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import { broadcastMessage } from '../helpers/broadcasting';
+import { deltaToMarkdown, deltaToPlainText } from '../helpers/quill-delta-converters';
+import { CompleteMessage } from '../types';
 
 const SendMessageSchema = z
   .object({
@@ -86,8 +86,8 @@ export const handler = withCors(
       await client.query('BEGIN');
 
       const workspaceMemberQuery = `
-            SELECT wm.id, wm.user_id 
-            FROM workspace_members wm 
+            SELECT wm.id, wm.user_id
+            FROM workspace_members wm
             WHERE wm.workspace_id = $1 AND wm.user_id = $2 AND wm.is_deactivated IS false
         `;
       const { rows: memberRows } = await client.query(workspaceMemberQuery, [workspaceId, userId]);
@@ -104,17 +104,17 @@ export const handler = withCors(
 
       if (channelId) {
         accessQuery = `
-              SELECT 1 FROM channel_members cm 
+              SELECT 1 FROM channel_members cm
               WHERE cm.channel_id = $1 AND cm.workspace_member_id = $2
               UNION
-              SELECT 1 FROM channels c 
+              SELECT 1 FROM channels c
               WHERE c.id = $1 AND c.channel_type = 'public'
               LIMIT 1
           `;
         accessParams = [channelId, workspaceMember.id];
       } else if (conversationId) {
         accessQuery = `
-              SELECT 1 FROM conversation_members cm 
+              SELECT 1 FROM conversation_members cm
               WHERE cm.conversation_id = $1 AND cm.workspace_member_id = $2 AND cm.left_at IS NULL
           `;
         accessParams = [conversationId, workspaceMember.id];
@@ -131,7 +131,7 @@ export const handler = withCors(
 
       if (attachment_ids.length > 0) {
         const attachmentQuery = `
-              SELECT id FROM uploaded_files 
+              SELECT id FROM uploaded_files
               WHERE id = ANY($1) AND uploaded_by = $2 AND workspace_id = $3 AND status = 'uploaded'
           `;
         const { rows: attachmentRows } = await client.query(attachmentQuery, [
@@ -149,8 +149,8 @@ export const handler = withCors(
       let finalThreadId = thread_id;
       if (parent_message_id) {
         const parentQuery = `
-              SELECT id, thread_id, channel_id, conversation_id 
-              FROM messages 
+              SELECT id, thread_id, channel_id, conversation_id
+              FROM messages
               WHERE id = $1
           `;
         const { rows: parentRows } = await client.query(parentQuery, [parent_message_id]);
@@ -174,13 +174,11 @@ export const handler = withCors(
         finalThreadId = parentMessage.thread_id || parent_message_id;
       }
 
-      await broadcastTypingStatus(userId, channelId, conversationId, false);
-
       const messageId = crypto.randomUUID();
 
       const insertMessageQuery = `
           INSERT INTO messages (
-              id, body, text, workspace_member_id, workspace_id, channel_id, 
+              id, body, text, workspace_member_id, workspace_id, channel_id,
               conversation_id, parent_message_id, thread_id, message_type, created_at
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
           RETURNING id, created_at
@@ -222,15 +220,15 @@ export const handler = withCors(
         await client.query(insertAttachmentsQuery, params);
 
         const updateStatusQuery = `
-              UPDATE uploaded_files 
-              SET status = 'attached' 
+              UPDATE uploaded_files
+              SET status = 'attached'
               WHERE id = ANY($1)
           `;
         await client.query(updateStatusQuery, [attachment_ids]);
       }
 
       const completeMessageQuery = `
-          SELECT 
+          SELECT
               m.id, m.body, m.text, m.workspace_member_id, m.workspace_id, m.channel_id,
               m.conversation_id, m.parent_message_id, m.thread_id, m.message_type,
               m.created_at, m.updated_at, m.edited_at, m.deleted_at,
@@ -254,7 +252,7 @@ export const handler = withCors(
           LEFT JOIN message_attachments ma ON m.id = ma.message_id
           LEFT JOIN uploaded_files uf ON ma.uploaded_file_id = uf.id
           WHERE m.id = $1
-          GROUP BY m.id, m.workspace_member_id, m.workspace_id, m.channel_id, 
+          GROUP BY m.id, m.workspace_member_id, m.workspace_id, m.channel_id,
                    m.conversation_id, m.parent_message_id, m.thread_id, m.message_type,
                    m.created_at, m.updated_at, m.edited_at, m.deleted_at,
                    u.id, u.name, u.email, u.image

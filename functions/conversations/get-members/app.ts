@@ -5,15 +5,14 @@ import { withCors } from '../../common/utils/cors';
 import { errorResponse, successResponse } from '../../common/utils/response';
 import { supabase } from '../../common/utils/supabase-client';
 
-interface ChannelMember {
+interface ConversationMember {
   id: string;
-  role: string;
   workspace_member_id: string;
   joined_at: string;
   left_at: string;
   last_read_message_id: string;
-  notifications_enabled: boolean;
-  channel_id: string;
+  is_hidden: boolean;
+  conversation_id: string;
 }
 
 export const handler = withCors(
@@ -24,10 +23,10 @@ export const handler = withCors(
         return errorResponse('Unauthorized', 401);
       }
 
-      const channelId = event.pathParameters?.channelId;
+      const conversationId = event.pathParameters?.conversationId;
       const workspaceId = event.pathParameters?.workspaceId;
-      if (!channelId || !workspaceId) {
-        return errorResponse('Channel ID and workspace ID are required', 400);
+      if (!conversationId || !workspaceId) {
+        return errorResponse('Conversation ID and workspace ID are required', 400);
       }
 
       const workspaceMember = await getMember(workspaceId, userId);
@@ -35,35 +34,34 @@ export const handler = withCors(
         return errorResponse('Not a member of this workspace', 403);
       }
 
-      const { data: channel, error: channelError } = await supabase
-        .from('channels')
+      const { data: conversation, error: conversationError } = await supabase
+        .from('conversations')
         .select('id')
-        .eq('id', channelId)
+        .eq('id', conversationId)
         .single();
-      if (channelError || !channel) {
-        return errorResponse('Channel not found', 404);
+      if (conversationError || !conversation) {
+        return errorResponse('Conversation not found', 404);
       }
 
-      const { data: channelMembers, error: membersError } = await supabase
-        .from('channel_members')
+      const { data: conversationMembers, error: membersError } = await supabase
+        .from('conversation_members')
         .select(
           `
                 id,
-                role,
                 workspace_member_id,
                 joined_at,
                 left_at,
                 last_read_message_id,
-                notifications_enabled,
-                channel_id
+                is_hidden,
+                conversation_id
             `,
         )
-        .eq('channel_id', channelId);
+        .eq('conversation_id', conversationId);
 
       if (membersError) {
-        console.error('Supabase error fetching channel members:', membersError);
+        console.error('Supabase error fetching conversation members:', membersError);
         return errorResponse(
-          'Failed to fetch channel members',
+          'Failed to fetch conversation members',
           500,
           {},
           {
@@ -72,19 +70,18 @@ export const handler = withCors(
         );
       }
 
-      const members = (channelMembers || []).map((cm: ChannelMember) => ({
-        channel_member_id: cm.id,
-        channel_role: cm.role,
+      const members = (conversationMembers || []).map((cm: ConversationMember) => ({
+        conversation_member_id: cm.id,
         workspace_member_id: cm.workspace_member_id,
         joined_at: cm.joined_at,
         left_at: cm.left_at,
         last_read_message_id: cm.last_read_message_id,
-        notifications_enabled: cm.notifications_enabled,
-        channel_id: cm.channel_id,
+        is_hidden: cm.is_hidden,
+        conversation_id: cm.conversation_id,
       }));
       return successResponse(members, 200);
     } catch (error) {
-      console.error('Error getting channel members:', error);
+      console.error('Error getting conversation members:', error);
       return errorResponse('Internal server error', 500);
     }
   },
