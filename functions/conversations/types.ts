@@ -10,6 +10,7 @@ export interface WorkspaceMember {
   id: string;
   role: string;
   user_id: string;
+  is_deactivated: boolean;
 }
 
 export interface ConversationMember {
@@ -19,6 +20,7 @@ export interface ConversationMember {
   joined_at: string;
   left_at: string | null;
   is_hidden: boolean;
+  last_read_message_id: string | null;
 }
 
 export interface ConversationMemberWithDetails {

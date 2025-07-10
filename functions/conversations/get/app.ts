@@ -1,185 +1,122 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getUserIdFromToken } from '../../common/helpers/auth';
 import { getMember } from '../../common/helpers/get-member';
-import { supabase } from '../../common/utils/supabase-client';
-import { successResponse, errorResponse } from '../../common/utils/response';
-import {
-  WorkspaceMember,
-  ConversationMember,
-  Conversation,
-  ConversationMemberWithDetails,
-  User,
-} from '../types';
 import { withCors } from '../../common/utils/cors';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import { supabase } from '../../common/utils/supabase-client';
+import { Conversation, ConversationMemberWithDetails } from '../types';
 
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
+      // 1) Auth & workspace check
       const userId = await getUserIdFromToken(event.headers.Authorization);
-      if (!userId) {
-        return errorResponse('Unauthorized', 401);
-      }
+      if (!userId) return errorResponse('Unauthorized', 401);
 
       const workspaceId = event.pathParameters?.workspaceId;
-      if (!workspaceId) {
-        return errorResponse('Workspace ID is required', 400);
-      }
+      if (!workspaceId) return errorResponse('Workspace ID is required', 400);
 
       const includeHidden = event.queryStringParameters?.include_hidden === 'true';
-
       const currentMember = await getMember(workspaceId, userId);
-      if (!currentMember) {
-        return errorResponse('Not a member of this workspace', 403);
-      }
+      if (!currentMember) return errorResponse('Not a member of this workspace', 403);
 
-      const userMembershipQuery = supabase
+      // 2) First, get conversation IDs where the current user is a member
+      let userConversationsQuery = supabase
         .from('conversation_members')
         .select('conversation_id, is_hidden')
         .eq('workspace_member_id', currentMember.id)
         .is('left_at', null);
 
       if (!includeHidden) {
-        userMembershipQuery.eq('is_hidden', false);
+        userConversationsQuery = userConversationsQuery.eq('is_hidden', false);
       }
 
-      const { data: userMemberships, error: membershipError } = await userMembershipQuery;
-
-      if (membershipError) {
-        throw membershipError;
+      const { data: userConversations, error: userConversationsError } =
+        await userConversationsQuery;
+      if (userConversationsError) throw userConversationsError;
+      if (!userConversations || userConversations.length === 0) {
+        return successResponse([], 200);
       }
 
-      if (!userMemberships || userMemberships.length === 0) {
-        return successResponse([]);
-      }
+      const conversationIds = userConversations.map((uc) => uc.conversation_id);
 
-      const conversationIds = userMemberships.map((m) => m.conversation_id);
-
-      const { data: conversationsData, error: conversationsError } = await supabase
+      // 3) Now get all conversations with ALL their members
+      const { data: rawConversations, error } = await supabase
         .from('conversations')
-        .select('id, workspace_id, created_at, updated_at')
+        .select(
+          `
+          id,
+          workspace_id,
+          created_at,
+          updated_at,
+          conversation_members!inner(
+            id,
+            workspace_member_id,
+            joined_at,
+            left_at,
+            is_hidden,
+            last_read_message_id,
+            workspace_members:workspace_member_id (
+              id,
+              role,
+              is_deactivated,
+              users:user_id (
+                id,
+                name,
+                image
+              )
+            )
+          )
+        `,
+        )
+        .eq('workspace_id', workspaceId)
         .in('id', conversationIds)
+        .is('conversation_members.left_at', null)
         .order('updated_at', { ascending: false });
 
-      if (conversationsError) {
-        throw conversationsError;
+      if (error) throw error;
+      if (!rawConversations || rawConversations.length === 0) {
+        return successResponse([], 200);
       }
 
-      if (!conversationsData || conversationsData.length === 0) {
-        return successResponse([]);
-      }
-
-      const { data: allConversationMembers, error: allMembersError } = await supabase
-        .from('conversation_members')
-        .select(
-          `
-                id,
-                conversation_id,
-                workspace_member_id,
-                joined_at,
-                left_at,
-                is_hidden
-              `,
-        )
-        .in('conversation_id', conversationIds)
-        .is('left_at', null); // Only active members
-
-      if (allMembersError) {
-        throw allMembersError;
-      }
-
-      // Step 4: Get unique workspace member IDs and fetch their data once
-      const uniqueWorkspaceMemberIds = [
-        ...new Set(allConversationMembers?.map((member) => member.workspace_member_id) || []),
-      ];
-
-      const { data: workspaceMembers, error: workspaceMembersError } = await supabase
-        .from('workspace_members')
-        .select(
-          `
-              id,
-              user_id,
-              role
-            `,
-        )
-        .in('id', uniqueWorkspaceMemberIds);
-
-      if (workspaceMembersError) {
-        throw workspaceMembersError;
-      }
-
-      // Step 5: Get unique user IDs and fetch user data once
-      const uniqueUserIds = [...new Set(workspaceMembers?.map((member) => member.user_id) || [])];
-
-      const { data: users, error: usersError } = await supabase
-        .from('users')
-        .select('id, name, image')
-        .in('id', uniqueUserIds);
-
-      if (usersError) {
-        throw usersError;
-      }
-
-      // Step 6: Create lookup maps for efficient data access
-      const usersMap = new Map<string, User>();
-      users?.forEach((user) => {
-        usersMap.set(user.id, user);
-      });
-
-      const workspaceMembersMap = new Map<string, WorkspaceMember>();
-      workspaceMembers?.forEach((member) => {
-        workspaceMembersMap.set(member.id, member);
-      });
-
-      const conversationMembersMap = new Map<string, ConversationMember[]>();
-      allConversationMembers?.forEach((member) => {
-        if (!conversationMembersMap.has(member.conversation_id)) {
-          conversationMembersMap.set(member.conversation_id, []);
-        }
-        conversationMembersMap.get(member.conversation_id)?.push(member);
-      });
-
-      // Step 7: Build the final response
-      const conversations: Conversation[] = conversationsData.map((conv) => {
-        const conversationMembers = conversationMembersMap.get(conv.id) || [];
-
-        const membersWithDetails: ConversationMemberWithDetails[] = conversationMembers.map(
-          (member) => {
-            const workspaceMember = workspaceMembersMap.get(member.workspace_member_id);
-            const user = workspaceMember ? usersMap.get(workspaceMember.user_id) : null;
-
-            return {
-              id: member.id,
-              joined_at: member.joined_at,
-              left_at: member.left_at,
-              is_hidden: member.is_hidden,
-              workspace_member: {
-                id: workspaceMember?.id || '',
-                role: workspaceMember?.role || '',
-                user: user || { id: '', name: 'Unknown User', image: null },
-              },
-            };
+      // 4) Map to your public `Conversation` DTO
+      const conversations: Conversation[] = rawConversations.map((c) => {
+        const members: ConversationMemberWithDetails[] = c.conversation_members.map((cm) => ({
+          id: cm.id,
+          joined_at: cm.joined_at,
+          left_at: cm.left_at,
+          is_hidden: cm.is_hidden,
+          last_read_message_id: cm.last_read_message_id,
+          workspace_member: {
+            id: cm.workspace_members.id,
+            role: cm.workspace_members.role,
+            is_deactivated: cm.workspace_members.is_deactivated,
+            user: {
+              id: cm.workspace_members.users.id,
+              name: cm.workspace_members.users.name,
+              image: cm.workspace_members.users.image,
+            },
           },
-        );
+        }));
 
-        const otherMembers = membersWithDetails.filter(
-          (member) => member.workspace_member.user.id !== userId,
-        );
+        const other_members = members.filter((m) => m.workspace_member.user.id !== userId);
+        const member_count = members.length;
 
         return {
-          id: conv.id,
-          workspace_id: conv.workspace_id,
-          created_at: conv.created_at,
-          updated_at: conv.updated_at,
-          members: membersWithDetails,
-          member_count: membersWithDetails.length,
-          other_members: otherMembers,
-          is_group_conversation: membersWithDetails.length > 2,
+          id: c.id,
+          workspace_id: c.workspace_id,
+          created_at: c.created_at,
+          updated_at: c.updated_at,
+          members,
+          member_count,
+          other_members,
+          is_group_conversation: member_count > 2,
         };
       });
 
-      return successResponse(conversations);
-    } catch (error) {
-      console.error('Error getting conversations:', error);
+      return successResponse(conversations, 200);
+    } catch (err) {
+      console.error('Error getting conversations:', err);
       return errorResponse('Internal server error', 500);
     }
   },
