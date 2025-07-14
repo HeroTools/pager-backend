@@ -334,7 +334,7 @@ Resources:
         GetMessageById:
           Type: Api
           Properties:
-            Path: /messages/{messageId}
+            Path: /workspaces/{workspaceId}/messages/{messageId}
             Method: get
             RestApiId: !Ref MainApi
     Metadata:
