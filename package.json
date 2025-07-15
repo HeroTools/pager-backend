@@ -8,22 +8,25 @@
     "@aws-sdk/client-lambda": "^3.844.0",
     "@aws-sdk/client-sqs": "^3.844.0",
     "@aws-sdk/client-ssm": "^3.844.0",
+    "@openai/agents": "^0.0.11",
+    "@openai/agents-core": "^0.0.11",
     "@supabase/supabase-js": "^2.51.0",
     "openai": "^5.9.0",
     "pg": "^8.16.3",
     "pgvector": "^0.2.1",
-    "zod": "^3.25.76"
+    "zod": "^3.25.67"
   },
   "scripts": {
     "lint": "eslint '*.ts' --quiet --fix",
     "compile": "tsc",
     "format": "prettier --write ./functions",
+    "prebuild": "rm -rf .aws-sam",
     "build": "sam build",
     "setup:local": "cp config/parameters.example.json config/parameters.json && echo '✅ Edit config/parameters.json with your values'",
     "setup:aws": "tsx scripts/setup-parameters.ts",
     "generate:env": "tsx scripts/generate-env.ts",
-    "local:dev": "npm run generate:env dev && npm run build && sam local start-api -p 8081 --env-vars env.json --profile unowned-prod",
-    "local:prod": "npm run generate:env prod && npm run build && sam local start-api -p 8081 --env-vars env.json --profile unowned-prod",
+    "local:dev": "npm run generate:env dev && npm run build && sam local start-api -p 8081 --env-vars env.json --config-env dev --profile unowned-prod",
+    "local:prod": "npm run generate:env prod && npm run build && sam local start-api -p 8081 --env-vars env.json --config-env prod --profile unowned-prod",
     "deploy:dev": "npm run setup:aws dev && npm run build && sam deploy --config-env dev --profile unowned-prod",
     "deploy:prod": "npm run setup:aws prod && npm run build && sam deploy --config-env prod --profile unowned-prod"
   },
