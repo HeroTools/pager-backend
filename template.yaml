@@ -1725,3 +1725,25 @@ Resources:
         Target: es2024
         EntryPoints:
           - get-conversations/app.ts
+
+  GetAgentConversationMessagesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/agents
+      Handler: get-conversation-messages/app.handler
+      Runtime: nodejs22.x
+      Timeout: 30
+      MemorySize: 128
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/agents/{agentId}/conversations/{conversationId}/messages
+            Method: get
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-conversation-messages/app.ts

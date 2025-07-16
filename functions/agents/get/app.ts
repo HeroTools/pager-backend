@@ -1,30 +1,57 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { z } from 'zod';
 import { getUserIdFromToken } from '../../common/helpers/auth';
 import { getMember } from '../../common/helpers/get-member';
 import { withCors } from '../../common/utils/cors';
 import dbPool from '../../common/utils/create-db-pool';
 import { errorResponse, successResponse } from '../../common/utils/response';
 
+const pathParamsSchema = z.object({
+  workspaceId: z.string().uuid('Invalid workspace ID format'),
+});
+
+const queryParamsSchema = z.object({
+  include_inactive: z
+    .string()
+    .optional()
+    .transform((val) => val === 'true'),
+});
+
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     let client;
     try {
-      // 1) Auth & workspace check
+      // 1) Auth check
       const userId = await getUserIdFromToken(event.headers.Authorization);
       if (!userId) return errorResponse('Unauthorized', 401);
 
-      const workspaceId = event.pathParameters?.workspaceId;
-      if (!workspaceId) return errorResponse('Workspace ID is required', 400);
+      // 2) Validate path parameters
+      const pathParamsResult = pathParamsSchema.safeParse(event.pathParameters);
+      if (!pathParamsResult.success) {
+        return errorResponse(
+          `Invalid path parameters: ${pathParamsResult.error.issues.map((i) => i.message).join(', ')}`,
+          400,
+        );
+      }
+      const { workspaceId } = pathParamsResult.data;
 
+      // 3) Validate query parameters
+      const queryParamsResult = queryParamsSchema.safeParse(event.queryStringParameters);
+      if (!queryParamsResult.success) {
+        return errorResponse(
+          `Invalid query parameters: ${queryParamsResult.error.issues.map((i) => i.message).join(', ')}`,
+          400,
+        );
+      }
+      const { include_inactive: includeInactive } = queryParamsResult.data;
+
+      // 4) Workspace membership check
       const currentMember = await getMember(workspaceId, userId);
       if (!currentMember) return errorResponse('Not a member of this workspace', 403);
 
-      // Query parameters
-      const includeInactive = event.queryStringParameters?.include_inactive === 'true';
-
       client = await dbPool.connect();
 
-      // 2) Get all agents for the workspace
+      // 5) Get all agents for the workspace
       const query = `
         SELECT
           a.id,
@@ -46,7 +73,7 @@ export const handler = withCors(
 
       const result = await client.query(query, [workspaceId]);
 
-      // 3) Transform to frontend format
+      // 6) Transform to frontend format
       const agents = result.rows.map((row: any) => ({
         id: row.id,
         name: row.name,
