@@ -6,7 +6,7 @@ import dbPool from '../../../common/utils/create-db-pool';
 export const fetchTimeRangeMessages = tool({
   name: 'fetch_time_range_messages',
   description:
-    'Fetch messages chronologically within a time range for comprehensive summaries and analysis. Use this for broader temporal queries like "what happened yesterday" rather than specific searches.',
+    'Fetch human messages chronologically within a time range for comprehensive summaries and analysis. Use this for broader temporal queries like "what happened yesterday" rather than specific searches. Excludes AI chat messages.',
   parameters: z.object({
     timeframe_start: z.string().datetime().describe('Start time in ISO format'),
     timeframe_end: z.string().datetime().describe('End time in ISO format'),
@@ -67,6 +67,11 @@ export const fetchTimeRangeMessages = tool({
               AND convm.left_at IS NULL
               AND convm.is_hidden = false
               AND wm.user_id = $2
+              AND NOT EXISTS (
+                SELECT 1 FROM conversation_members cm_agent
+                WHERE cm_agent.conversation_id = conv.id
+                  AND cm_agent.ai_agent_id IS NOT NULL
+              )
           )
           SELECT COUNT(*) as total_messages
           FROM messages m
@@ -76,6 +81,7 @@ export const fetchTimeRangeMessages = tool({
           WHERE m.workspace_id = $1
             AND m.created_at BETWEEN $3 AND $4
             AND m.deleted_at IS NULL
+            AND m.sender_type = 'user'
             AND (
               (m.channel_id IS NOT NULL AND ac.channel_id IS NOT NULL)
               OR
@@ -146,6 +152,11 @@ export const fetchTimeRangeMessages = tool({
               AND convm.left_at IS NULL
               AND convm.is_hidden = false
               AND wm.user_id = $2
+              AND NOT EXISTS (
+                SELECT 1 FROM conversation_members cm_agent
+                WHERE cm_agent.conversation_id = conv.id
+                  AND cm_agent.ai_agent_id IS NOT NULL
+              )
           )
           SELECT
             m.id AS message_id,
@@ -156,6 +167,7 @@ export const fetchTimeRangeMessages = tool({
             m.message_type,
             m.parent_message_id,
             m.thread_id,
+            m.sender_type,
             u.name AS author_name,
             u.image AS author_image,
             u.id AS author_id,
@@ -179,6 +191,7 @@ export const fetchTimeRangeMessages = tool({
           WHERE m.workspace_id = $1
             AND m.created_at BETWEEN $3 AND $4
             AND m.deleted_at IS NULL
+            AND m.sender_type = 'user'
             AND (
               (m.channel_id IS NOT NULL AND ac.channel_id IS NOT NULL)
               OR
@@ -201,6 +214,7 @@ export const fetchTimeRangeMessages = tool({
           messageType: row.message_type,
           parentMessageId: row.parent_message_id,
           threadId: row.thread_id,
+          senderType: row.sender_type,
           author: {
             id: row.author_id,
             name: row.author_name,

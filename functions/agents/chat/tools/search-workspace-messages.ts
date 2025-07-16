@@ -8,10 +8,9 @@ import { createEmbedding } from '../../../common/utils/create-embedding';
 export const searchWorkspaceMessages = tool({
   name: 'search_workspace_messages',
   description:
-    'Search workspace messages with optional time filtering. Use this when users ask about information from their workspace history.',
+    'Search workspace messages with optional time filtering. Use this when users ask about information from their workspace history. Searches only human team messages, excludes AI chat conversations.',
   parameters: z.object({
     query: z.string().describe('The search query to find relevant messages'),
-    // Fix: Use nullable instead of optional for complex objects
     timeframe_start: z
       .string()
       .datetime()
@@ -109,6 +108,11 @@ export const searchWorkspaceMessages = tool({
               AND convm.left_at IS NULL
               AND convm.is_hidden = false
               AND wm.user_id = $2
+              AND NOT EXISTS (
+                SELECT 1 FROM conversation_members cm_agent
+                WHERE cm_agent.conversation_id = conv.id
+                  AND cm_agent.ai_agent_id IS NOT NULL
+              )
           ),
           search_results AS (
             SELECT
@@ -119,6 +123,7 @@ export const searchWorkspaceMessages = tool({
               m.body,
               m.text,
               m.created_at,
+              m.sender_type,
               u.name AS author_name,
               u.image AS author_image,
               ac.channel_name,
@@ -136,6 +141,7 @@ export const searchWorkspaceMessages = tool({
             WHERE me.workspace_id = $1
               AND (me.embedding <=> $3) < $4
               AND m.deleted_at IS NULL
+              AND m.sender_type = 'user'
               AND (
                 (me.channel_id IS NOT NULL AND ac.channel_id IS NOT NULL)
                 OR
@@ -150,6 +156,7 @@ export const searchWorkspaceMessages = tool({
             COALESCE(text, body) AS content,
             similarity,
             created_at,
+            sender_type,
             author_name,
             author_image,
             channel_id,
@@ -162,7 +169,7 @@ export const searchWorkspaceMessages = tool({
 
         const result = await client.query(sql, values);
 
-        console.log('SEASRCH', result.rows);
+        console.log('SEARCH', result.rows);
 
         return {
           results: result.rows.map((row) => ({
@@ -170,6 +177,7 @@ export const searchWorkspaceMessages = tool({
             content: row.content,
             similarity: parseFloat(row.similarity),
             timestamp: row.created_at,
+            senderType: row.sender_type,
             author: row.author_name,
             authorImage: row.author_image,
             channelId: row.channel_id,
