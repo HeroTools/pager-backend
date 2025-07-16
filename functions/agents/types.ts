@@ -57,3 +57,73 @@ export interface AgentConversationFilters {
   limit?: number;
   cursor?: string; // timestamp cursor for pagination
 }
+
+export interface AgentMessageWithSender {
+  id: string;
+  body: string;
+  workspace_member_id: string | null;
+  ai_agent_id: string | null;
+  workspace_id: string;
+  channel_id: string | null;
+  conversation_id: string;
+  parent_message_id: string | null;
+  thread_id: string | null;
+  message_type: string;
+  sender_type: 'user' | 'agent' | 'system';
+  created_at: string;
+  updated_at: string;
+  edited_at: string | null;
+  deleted_at: string | null;
+  blocks: any;
+  metadata: any;
+  reactions: Array<{
+    id: string;
+    value: string;
+    count: number;
+    users: Array<{ id: string; name: string }>;
+  }>;
+  attachments: Array<{
+    id: string;
+    original_filename: string;
+    public_url: string;
+    content_type: string;
+    size_bytes: number;
+    order_index: number;
+  }>;
+}
+
+export interface AgentConversationData {
+  conversation: {
+    id: string;
+    workspace_id: string;
+    created_at: string;
+    updated_at: string;
+    title: string | null;
+  };
+  agent: {
+    id: string;
+    name: string;
+    avatar_url: string | null;
+    is_active: boolean;
+  };
+  messages: AgentMessageWithSender[];
+  pagination: {
+    hasMore: boolean;
+    nextCursor: string | null;
+    totalCount: number;
+  };
+  user_conversation_data: {
+    member_id: string;
+    last_read_message_id: string | null;
+    workspace_member_id: string;
+  };
+}
+
+export interface AgentConversationMessageFilters {
+  limit?: number;
+  cursor?: string;
+  before?: string;
+  include_reactions?: boolean;
+  include_attachments?: boolean;
+  include_count?: boolean;
+}

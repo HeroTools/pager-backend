@@ -1,35 +1,70 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { z } from 'zod';
 import { getUserIdFromToken } from '../../common/helpers/auth';
 import { getMember } from '../../common/helpers/get-member';
 import { withCors } from '../../common/utils/cors';
 import dbPool from '../../common/utils/create-db-pool';
 import { errorResponse, successResponse } from '../../common/utils/response';
 
+const pathParamsSchema = z.object({
+  workspaceId: z.string().uuid('Invalid workspace ID format'),
+  agentId: z.string().uuid('Invalid agent ID format'),
+});
+
+const queryParamsSchema = z.object({
+  include_hidden: z
+    .string()
+    .optional()
+    .transform((val) => val === 'true'),
+  limit: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (!val) return 20;
+      const parsed = parseInt(val, 10);
+      if (isNaN(parsed) || parsed < 1 || parsed > 100) {
+        throw new Error('Limit must be between 1 and 100');
+      }
+      return parsed;
+    }),
+  cursor: z.string().datetime().optional(),
+});
+
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     let client;
     try {
-      // 1) Auth & workspace check
+      // 1) Auth check
       const userId = await getUserIdFromToken(event.headers.Authorization);
       if (!userId) return errorResponse('Unauthorized', 401);
 
-      const workspaceId = event.pathParameters?.workspaceId;
-      const agentId = event.pathParameters?.agentId;
+      // 2) Validate path parameters
+      const pathParamsResult = pathParamsSchema.safeParse(event.pathParameters);
+      if (!pathParamsResult.success) {
+        return errorResponse(
+          `Invalid path parameters: ${pathParamsResult.error.issues.map((i) => i.message).join(', ')}`,
+          400,
+        );
+      }
+      const { workspaceId, agentId } = pathParamsResult.data;
 
-      if (!workspaceId) return errorResponse('Workspace ID is required', 400);
-      if (!agentId) return errorResponse('Agent ID is required', 400);
+      // 3) Validate query parameters
+      const queryParamsResult = queryParamsSchema.safeParse(event.queryStringParameters);
+      if (!queryParamsResult.success) {
+        return errorResponse(
+          `Invalid query parameters: ${queryParamsResult.error.issues.map((i) => i.message).join(', ')}`,
+          400,
+        );
+      }
+      const { include_hidden: includeHidden, limit, cursor } = queryParamsResult.data;
 
+      // 4) Workspace membership check
       const currentMember = await getMember(workspaceId, userId);
       if (!currentMember) return errorResponse('Not a member of this workspace', 403);
 
-      // Query parameters
-      const includeHidden = event.queryStringParameters?.include_hidden === 'true';
-      const limit = parseInt(event.queryStringParameters?.limit || '20');
-      const cursor = event.queryStringParameters?.cursor; // timestamp cursor
-
       client = await dbPool.connect();
 
-      // 2) Verify agent exists and is in this workspace
+      // 5) Verify agent exists and is in this workspace
       const agentCheckQuery = `
         SELECT id, name, avatar_url, is_active
         FROM agents
@@ -44,7 +79,7 @@ export const handler = withCors(
 
       const agent = agentResult.rows[0];
 
-      // 3) Get conversations between the user and this specific agent
+      // 6) Get conversations between the user and this specific agent
       const conversationsQuery = `
         SELECT
           c.id,
@@ -104,7 +139,7 @@ export const handler = withCors(
         conversations.length > 0 ? conversations[conversations.length - 1].updated_at : null;
 
       // 6) Transform to frontend format
-      const transformedConversations = conversations.map((row: any) => ({
+      const transformedConversations = conversations.map((row) => ({
         id: row.id,
         workspace_id: row.workspace_id,
         created_at: row.created_at,
