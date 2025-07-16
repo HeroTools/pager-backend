@@ -6,6 +6,7 @@ import { getUserIdFromToken } from '../../common/helpers/auth';
 import { withCors } from '../../common/utils/cors';
 import dbPool from '../../common/utils/create-db-pool';
 import { errorResponse, successResponse } from '../../common/utils/response';
+import { AgentMessageWithSender } from '../types';
 import { conversationAgent } from './agents';
 import { getOrCreateConversation, saveAiMessage } from './helpers/database-helpers';
 
@@ -64,8 +65,8 @@ export const handler: APIGatewayProxyHandler = withCors(async (event, _ctx) => {
 
     console.log('Conversation', conversation);
 
-    // Persist user message
-    await saveAiMessage(
+    // Persist user message and get the saved message object
+    const userMessage = await saveAiMessage(
       client,
       conversation.id,
       workspaceId,
@@ -85,6 +86,7 @@ export const handler: APIGatewayProxyHandler = withCors(async (event, _ctx) => {
         body.agentId,
         agent,
         body.message,
+        userMessage, // Pass the saved user message
       );
     } else {
       // Non-streaming response
@@ -96,6 +98,7 @@ export const handler: APIGatewayProxyHandler = withCors(async (event, _ctx) => {
         body.agentId,
         agent,
         body.message,
+        userMessage, // Pass the saved user message
       );
     }
   } catch (error: any) {
@@ -116,6 +119,7 @@ async function handleRegularResponse(
   agentId: string,
   agent: any,
   message: string,
+  userMessage: AgentMessageWithSender, // The saved user message
 ) {
   const startTime = Date.now();
 
@@ -145,8 +149,8 @@ async function handleRegularResponse(
 
   console.log(result);
 
-  // Save assistant response with AI-specific metadata
-  await saveAiMessage(
+  // Save assistant response and get the saved message object
+  const agentMessage = await saveAiMessage(
     client,
     conversation.id,
     workspaceId,
@@ -156,15 +160,20 @@ async function handleRegularResponse(
     agentId, // ai_agent_id for agent messages
   );
 
-  return successResponse({
-    response: result.finalOutput,
-    conversationId: conversation.id,
-    agentId,
-    agentName: agent.name,
-    agentTrace: result.trace,
-    toolsUsed: result.toolCalls?.length || 0,
-    processingTimeMs: processingTime,
-  });
+  // Return both the user message (to replace optimistic) and agent message
+  return successResponse(
+    {
+      userMessage,
+      agentMessage,
+    },
+    200,
+    {
+      // Optional: Include additional metadata in headers
+      'X-Agent-Name': agent.name,
+      'X-Processing-Time-Ms': processingTime.toString(),
+      'X-Tools-Used': (result.toolCalls?.length || 0).toString(),
+    },
+  );
 }
 
 async function handleStreamingResponse(
@@ -175,6 +184,7 @@ async function handleStreamingResponse(
   agentId: string,
   agent: any,
   message: string,
+  userMessage: any, // The saved user message
 ) {
   const startTime = Date.now();
   // For Lambda streaming, we need to collect the response and return it
@@ -219,8 +229,8 @@ async function handleStreamingResponse(
   // Use the final output if streaming didn't capture everything
   const finalResponse = assistantReply || result.finalOutput;
 
-  // Save final assistant message
-  await saveAiMessage(
+  // Save final assistant message and get the saved message object
+  const agentMessage = await saveAiMessage(
     client,
     conversation.id,
     workspaceId,
@@ -230,24 +240,21 @@ async function handleStreamingResponse(
     agentId,
   );
 
-  // Return with streaming headers for future WebSocket upgrade
-  return {
-    statusCode: 200,
-    headers: {
+  // Return both messages in the format expected by frontend
+  return successResponse(
+    {
+      userMessage,
+      agentMessage,
+    },
+    200,
+    {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'no-cache',
       'X-Streaming-Supported': 'true',
+      'X-Agent-Name': agent.name,
+      'X-Processing-Time-Ms': processingTime.toString(),
+      'X-Tools-Used': (result.toolCalls?.length || 0).toString(),
     },
-    body: JSON.stringify({
-      response: finalResponse,
-      conversationId: conversation.id,
-      agentId,
-      agentName: agent.name,
-      agentTrace: result.trace,
-      toolsUsed: result.toolCalls?.length || 0,
-      processingTimeMs: processingTime,
-      streaming: true,
-    }),
-  };
+  );
 }
