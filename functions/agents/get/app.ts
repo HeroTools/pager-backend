@@ -10,13 +10,6 @@ const pathParamsSchema = z.object({
   workspaceId: z.string().uuid('Invalid workspace ID format'),
 });
 
-const queryParamsSchema = z.object({
-  include_inactive: z
-    .string()
-    .optional()
-    .transform((val) => val === 'true'),
-});
-
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     let client;
@@ -34,16 +27,6 @@ export const handler = withCors(
         );
       }
       const { workspaceId } = pathParamsResult.data;
-
-      // 3) Validate query parameters
-      const queryParamsResult = queryParamsSchema.safeParse(event.queryStringParameters);
-      if (!queryParamsResult.success) {
-        return errorResponse(
-          `Invalid query parameters: ${queryParamsResult.error.issues.map((i) => i.message).join(', ')}`,
-          400,
-        );
-      }
-      const { include_inactive: includeInactive } = queryParamsResult.data;
 
       // 4) Workspace membership check
       const currentMember = await getMember(workspaceId, userId);
@@ -67,7 +50,6 @@ export const handler = withCors(
         FROM agents a
         LEFT JOIN users u ON a.created_by_user_id = u.id
         WHERE a.workspace_id = $1
-          ${!includeInactive ? 'AND a.is_active = true' : ''}
         ORDER BY a.created_at DESC
       `;
 

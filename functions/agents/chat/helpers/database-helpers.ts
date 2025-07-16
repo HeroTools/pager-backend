@@ -1,4 +1,5 @@
 import { PoolClient } from 'pg';
+import { AgentMessageWithSender } from '../../types';
 
 export interface AiConversation {
   id: string;
@@ -79,8 +80,8 @@ export async function saveAiMessage(
   content: string,
   workspaceMemberId?: string,
   agentId?: string,
-): Promise<void> {
-  await client.query(
+): Promise<AgentMessageWithSender> {
+  const messageResult = await client.query(
     `INSERT INTO messages (
         conversation_id,
         workspace_id,
@@ -89,8 +90,28 @@ export async function saveAiMessage(
         sender_type,
         workspace_member_id,
         ai_agent_id,
-        created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+        message_type,
+        created_at,
+        updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'direct', NOW(), NOW())
+      RETURNING
+        id,
+        body,
+        workspace_member_id,
+        ai_agent_id,
+        workspace_id,
+        channel_id,
+        conversation_id,
+        parent_message_id,
+        thread_id,
+        message_type,
+        sender_type,
+        created_at,
+        updated_at,
+        edited_at,
+        deleted_at,
+        blocks,
+        metadata`,
     [
       conversationId,
       workspaceId,
@@ -109,6 +130,33 @@ export async function saveAiMessage(
      WHERE id = $1`,
     [conversationId],
   );
+
+  const savedMessage = messageResult.rows[0];
+
+  // Return the message in the format expected by frontend
+  const agentMessage: AgentMessageWithSender = {
+    id: savedMessage.id,
+    body: savedMessage.body,
+    workspace_member_id: savedMessage.workspace_member_id,
+    ai_agent_id: savedMessage.ai_agent_id,
+    workspace_id: savedMessage.workspace_id,
+    channel_id: savedMessage.channel_id,
+    conversation_id: savedMessage.conversation_id,
+    parent_message_id: savedMessage.parent_message_id,
+    thread_id: savedMessage.thread_id,
+    message_type: savedMessage.message_type,
+    sender_type: savedMessage.sender_type,
+    created_at: savedMessage.created_at,
+    updated_at: savedMessage.updated_at,
+    edited_at: savedMessage.edited_at,
+    deleted_at: savedMessage.deleted_at,
+    blocks: savedMessage.blocks,
+    metadata: savedMessage.metadata,
+    reactions: [], // No reactions on new messages
+    attachments: [], // No attachments in this context (could be extended later)
+  };
+
+  return agentMessage;
 }
 
 export async function getConversationHistory(
