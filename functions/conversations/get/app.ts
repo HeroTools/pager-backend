@@ -2,12 +2,12 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getUserIdFromToken } from '../../common/helpers/auth';
 import { getMember } from '../../common/helpers/get-member';
 import { withCors } from '../../common/utils/cors';
+import dbPool from '../../common/utils/create-db-pool';
 import { errorResponse, successResponse } from '../../common/utils/response';
-import { supabase } from '../../common/utils/supabase-client';
-import { Conversation, ConversationMemberWithDetails } from '../types';
 
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    let client;
     try {
       // 1) Auth & workspace check
       const userId = await getUserIdFromToken(event.headers.Authorization);
@@ -20,93 +20,104 @@ export const handler = withCors(
       const currentMember = await getMember(workspaceId, userId);
       if (!currentMember) return errorResponse('Not a member of this workspace', 403);
 
-      // 2) First, get conversation IDs where the current user is a member
-      let userConversationsQuery = supabase
-        .from('conversation_members')
-        .select('conversation_id, is_hidden')
-        .eq('workspace_member_id', currentMember.id)
-        .is('left_at', null);
+      client = await dbPool.connect();
 
-      if (!includeHidden) {
-        userConversationsQuery = userConversationsQuery.eq('is_hidden', false);
-      }
+      // 2) First get conversation IDs where user is a member (human-only conversations)
+      const conversationIdsQuery = `
+        SELECT DISTINCT c.id, c.updated_at
+        FROM conversations c
+        INNER JOIN conversation_members cm ON c.id = cm.conversation_id
+        WHERE c.workspace_id = $1
+          AND cm.workspace_member_id = $2
+          AND cm.left_at IS NULL
+          ${!includeHidden ? 'AND cm.is_hidden = false' : ''}
+          -- Exclude conversations that have ANY AI agent members
+          AND NOT EXISTS (
+            SELECT 1 FROM conversation_members cm_agent
+            WHERE cm_agent.conversation_id = c.id
+            AND cm_agent.ai_agent_id IS NOT NULL
+          )
+        ORDER BY c.updated_at DESC
+      `;
 
-      const { data: userConversations, error: userConversationsError } =
-        await userConversationsQuery;
-      if (userConversationsError) throw userConversationsError;
-      if (!userConversations || userConversations.length === 0) {
+      const conversationIdsResult = await client.query(conversationIdsQuery, [
+        workspaceId,
+        currentMember.id,
+      ]);
+
+      if (conversationIdsResult.rows.length === 0) {
         return successResponse([], 200);
       }
 
-      const conversationIds = userConversations.map((uc) => uc.conversation_id);
+      const conversationIds = conversationIdsResult.rows.map((row) => row.id);
 
-      // 3) Now get all conversations with ALL their members
-      const { data: rawConversations, error } = await supabase
-        .from('conversations')
-        .select(
-          `
-          id,
-          workspace_id,
-          created_at,
-          updated_at,
-          conversation_members!inner(
-            id,
-            workspace_member_id,
-            joined_at,
-            left_at,
-            is_hidden,
-            last_read_message_id,
-            workspace_members:workspace_member_id (
-              id,
-              role,
-              is_deactivated,
-              users:user_id (
-                id,
-                name,
-                image
+      // 3) Get full conversation data with members
+      const conversationsQuery = `
+        SELECT
+          c.id,
+          c.workspace_id,
+          c.created_at,
+          c.updated_at,
+          c.title,
+          json_agg(
+            json_build_object(
+              'id', cm.id,
+              'joined_at', cm.joined_at,
+              'left_at', cm.left_at,
+              'is_hidden', cm.is_hidden,
+              'last_read_message_id', cm.last_read_message_id,
+              'workspace_member', json_build_object(
+                'id', wm.id,
+                'role', wm.role,
+                'user_id', wm.user_id,
+                'is_deactivated', wm.is_deactivated,
+                'user', json_build_object(
+                  'id', u.id,
+                  'name', u.name,
+                  'image', u.image
+                )
               )
             )
-          )
-        `,
-        )
-        .eq('workspace_id', workspaceId)
-        .in('id', conversationIds)
-        .is('conversation_members.left_at', null)
-        .order('updated_at', { ascending: false });
+          ) as members
+        FROM conversations c
+        INNER JOIN conversation_members cm ON c.id = cm.conversation_id
+        INNER JOIN workspace_members wm ON cm.workspace_member_id = wm.id
+        INNER JOIN users u ON wm.user_id = u.id
+        WHERE c.id = ANY($1)
+          AND cm.left_at IS NULL
+          AND cm.workspace_member_id IS NOT NULL
+        GROUP BY c.id, c.workspace_id, c.created_at, c.updated_at, c.title
+        ORDER BY c.updated_at DESC
+      `;
 
-      if (error) throw error;
-      if (!rawConversations || rawConversations.length === 0) {
+      const result = await client.query(conversationsQuery, [conversationIds]);
+
+      if (result.rows.length === 0) {
         return successResponse([], 200);
       }
 
-      // 4) Map to your public `Conversation` DTO
-      const conversations: Conversation[] = rawConversations.map((c) => {
-        const members: ConversationMemberWithDetails[] = c.conversation_members.map((cm) => ({
-          id: cm.id,
-          joined_at: cm.joined_at,
-          left_at: cm.left_at,
-          is_hidden: cm.is_hidden,
-          last_read_message_id: cm.last_read_message_id,
-          workspace_member: {
-            id: cm.workspace_members.id,
-            role: cm.workspace_members.role,
-            is_deactivated: cm.workspace_members.is_deactivated,
-            user: {
-              id: cm.workspace_members.users.id,
-              name: cm.workspace_members.users.name,
-              image: cm.workspace_members.users.image,
-            },
-          },
+      // 4) Transform to frontend format
+      const conversations = result.rows.map((row) => {
+        const members = row.members.map((member: any) => ({
+          id: member.id,
+          joined_at: member.joined_at,
+          role: member.workspace_member.role,
+          notifications_enabled: true,
+          left_at: member.left_at,
+          is_hidden: member.is_hidden,
+          last_read_message_id: member.last_read_message_id,
+          workspace_member: member.workspace_member,
         }));
 
-        const other_members = members.filter((m) => m.workspace_member.user.id !== userId);
+        const other_members = members.filter((m: any) => m.workspace_member?.user.id !== userId);
         const member_count = members.length;
 
         return {
-          id: c.id,
-          workspace_id: c.workspace_id,
-          created_at: c.created_at,
-          updated_at: c.updated_at,
+          id: row.id,
+          workspace_id: row.workspace_id,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+          title: row.title,
           members,
           member_count,
           other_members,
@@ -118,6 +129,10 @@ export const handler = withCors(
     } catch (err) {
       console.error('Error getting conversations:', err);
       return errorResponse('Internal server error', 500);
+    } finally {
+      if (client) {
+        client.release();
+      }
     }
   },
 );
