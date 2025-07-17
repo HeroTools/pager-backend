@@ -49,7 +49,7 @@ export const handler = withCors(
       const { workspaceId, agentId } = pathParamsResult.data;
 
       // 3) Validate query parameters
-      const queryParamsResult = queryParamsSchema.safeParse(event.queryStringParameters);
+      const queryParamsResult = queryParamsSchema.safeParse(event.queryStringParameters || {});
       if (!queryParamsResult.success) {
         return errorResponse(
           `Invalid query parameters: ${queryParamsResult.error.issues.map((i) => i.message).join(', ')}`,
