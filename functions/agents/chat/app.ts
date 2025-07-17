@@ -12,7 +12,12 @@ import { getOrCreateConversation, saveAiMessage } from './helpers/database-helpe
 
 const ChatRequest = z.object({
   message: z.string().min(1),
-  conversationId: z.string().uuid().optional(),
+  conversationId: z
+    .string()
+    .uuid()
+    .optional()
+    .nullable()
+    .transform((val) => val || undefined), // Transform null/empty string to undefined
   agentId: z.string().uuid().describe('The AI agent to chat with'),
   stream: z.boolean().default(false),
 });
@@ -165,6 +170,7 @@ async function handleRegularResponse(
     {
       userMessage,
       agentMessage,
+      conversation,
     },
     200,
     {
@@ -245,6 +251,7 @@ async function handleStreamingResponse(
     {
       userMessage,
       agentMessage,
+      conversation,
     },
     200,
     {
