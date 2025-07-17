@@ -1,20 +1,19 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: >
-  unowned-api
 
 Parameters:
   StageName:
     Type: String
     Default: Prod
-    Description: 'The stage name for the deployment (Dev or Prod)'
-    AllowedValues:
-      - Dev
-      - Prod
-
-Conditions:
-  IsDev: !Equals [!Ref StageName, Dev]
-  IsProd: !Equals [!Ref StageName, Prod]
+    AllowedValues: [Dev, Prod]
+  StackName:
+    Type: String
+    Default: unowned
+    AllowedValues: [unowned, unowned-dev]
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
 
 Globals:
   Function:
@@ -22,18 +21,19 @@ Globals:
     MemorySize: 512
     Environment:
       Variables:
-        OPENAI_API_KEY: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/openai-api-key:}}'
-        GOOGLE_CLIENT_ID: !Sub '{{resolve:ssm:/unowned/${StageName}/google-client-id:}}'
-        SUPABASE_URL: !Sub '{{resolve:ssm:/unowned/${StageName}/supabase-url}}'
-        SUPABASE_ANON_KEY: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/supabase-anon-key:}}'
-        SUPABASE_SERVICE_ROLE_KEY: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/supabase-service-role-key:}}'
-        PG_USER: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-user:}}'
-        PG_HOST: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-host:}}'
-        PG_DATABASE: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-database:}}'
-        PG_PASSWORD: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/pg-password:}}'
-        PG_PORT: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-port:}}'
-        FRONTEND_URL: !Sub '{{resolve:ssm:/unowned/${StageName}/frontend-url:}}'
-        ALLOWED_ORIGINS: !Sub '{{resolve:ssm:/unowned/${StageName}/allowed-origins:}}'
+        OPENAI_API_KEY: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/openai-api-key:SecretString}}'
+        GOOGLE_CLIENT_ID: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/google-client-id:SecretString}}'
+        SUPABASE_URL: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/supabase-url:SecretString}}'
+        SUPABASE_ANON_KEY: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/supabase-anon-key:SecretString}}'
+        SUPABASE_SERVICE_ROLE_KEY: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/supabase-service-role-key:SecretString}}'
+        PG_USER: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-user:SecretString}}'
+        PG_HOST: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-host:SecretString}}'
+        PG_DATABASE: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-database:SecretString}}'
+        PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-password:SecretString}}'
+        PG_PORT: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-port:SecretString}}'
+        FRONTEND_URL: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/frontend-url:SecretString}}'
+        ALLOWED_ORIGINS: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/allowed-origins:SecretString}}'
+
   Api:
     Cors:
       AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
@@ -1660,28 +1660,6 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt EmbeddingScheduleRule.Arn
 
-  AgentChatFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: functions/agents
-      Handler: chat/app.handler
-      Runtime: nodejs22.x
-      Timeout: 120
-      MemorySize: 1024
-      Events:
-        ApiEvent:
-          Type: Api
-          Properties:
-            Path: /workspaces/{workspaceId}/agents/chat
-            Method: post
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2024
-        EntryPoints:
-          - chat/app.ts
-
   GetAgentsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -1703,6 +1681,42 @@ Resources:
         Target: es2024
         EntryPoints:
           - get/app.ts
+
+  AgentChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/agents
+      Handler: chat/app.handler # Make sure this exports streamified handler
+      Runtime: nodejs22.x
+      Timeout: 300 # Increased for streaming
+      MemorySize: 1024
+      FunctionUrlConfig: # ✅ Built-in Function URL
+        AuthType: NONE
+        InvokeMode: RESPONSE_STREAM
+        Cors:
+          AllowCredentials: false
+          AllowHeaders:
+            - 'Content-Type'
+            - 'Authorization'
+            - 'X-Amz-Date'
+            - 'X-Api-Key'
+            - 'X-Amz-Security-Token'
+          AllowMethods:
+            - 'POST'
+          AllowOrigins:
+            - '*'
+          MaxAge: 86400
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - chat/app.ts
+        External:
+          - aws-lambda
+
+  # No separate URL resource needed!
 
   GetAgentConversationsFunction:
     Type: AWS::Serverless::Function
@@ -1747,3 +1761,11 @@ Resources:
         Target: es2024
         EntryPoints:
           - get-conversation-messages/app.ts
+
+Outputs:
+  # Function URL for streaming
+  StreamingFunctionUrl:
+    Description: 'Function URL for streaming chat'
+    Value: !GetAtt AgentChatFunctionUrl.FunctionUrl
+    Export:
+      Name: !Sub '${AWS::StackName}-StreamingFunctionUrl'
