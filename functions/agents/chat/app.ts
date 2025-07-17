@@ -33,7 +33,6 @@ function writeSSE(responseStream: any, data: any, event?: string, id?: string) {
   responseStream.write(sseData);
 }
 
-// This is the TRUE streaming handler using Lambda Response Streaming
 export const streamHandler = async (
   event: APIGatewayProxyEventV2,
   responseStream: any,
@@ -41,15 +40,11 @@ export const streamHandler = async (
 ) => {
   let client: PoolClient | null = null;
 
-  // Set content type for SSE as recommended in the blog
   responseStream.setContentType('text/event-stream');
 
   try {
-    // Parse the event (Function URL format is different from API Gateway)
     const requestBody = JSON.parse(event.body || '{}');
     const authHeader = event.headers.authorization || event.headers.Authorization;
-
-    // Extract workspaceId from path or body
     const workspaceId = event.pathParameters?.workspaceId || requestBody.workspaceId;
 
     if (!authHeader || !workspaceId) {
@@ -110,12 +105,10 @@ export const streamHandler = async (
       undefined,
     );
 
-    // Send user message immediately
     writeSSE(responseStream, { userMessage, conversation }, 'user_message', Date.now().toString());
 
     const startTime = Date.now();
 
-    // Start the streaming run
     const stream = await run(
       conversationAgent,
       [
@@ -141,31 +134,26 @@ export const streamHandler = async (
 
     let assistantReply = '';
 
-    // Stream text content as it arrives - THIS SENDS EACH CHUNK IMMEDIATELY!
+    // Use the text stream for real-time content (this is what gives us streaming)
     const textStream = stream.toTextStream();
-    for await (const chunk of textStream) {
-      assistantReply += chunk;
-      // Send each chunk immediately to the client
-      writeSSE(responseStream, { content: chunk }, 'content_delta', Date.now().toString());
+
+    try {
+      for await (const chunk of textStream) {
+        assistantReply += chunk;
+        // Send each chunk immediately for real-time streaming
+        writeSSE(responseStream, { content: chunk }, 'content_delta', Date.now().toString());
+      }
+    } catch (error) {
+      console.error('Text streaming error:', error);
     }
 
-    // Handle other events
-    for await (const event of stream) {
-      if (event.type === 'agent_updated_stream_event') {
-        writeSSE(
-          responseStream,
-          { agent: event.agent.name },
-          'agent_switch',
-          Date.now().toString(),
-        );
-      }
-
-      if (event.type === 'run_item_stream_event' && event.item?.type === 'tool_calls') {
-        writeSSE(responseStream, { toolCall: event.item }, 'tool_call', Date.now().toString());
-      }
+    // Wait for the stream to complete to get final results
+    try {
+      await stream.completed;
+    } catch (error) {
+      console.error('Stream completion error:', error);
     }
 
-    // Wait for completion
     await stream.completed;
 
     const processingTime = Date.now() - startTime;
@@ -181,11 +169,13 @@ export const streamHandler = async (
       body.agentId,
     );
 
-    // Send final completion
+    // Send final completion with all the data needed for cache updates
     writeSSE(
       responseStream,
       {
         agentMessage,
+        userMessage, // Include this for cache consistency
+        conversation,
         metadata: {
           processingTime,
           toolCallsCount: stream.toolCalls?.length || 0,
@@ -197,8 +187,6 @@ export const streamHandler = async (
     );
 
     writeSSE(responseStream, { status: 'complete' }, 'done');
-
-    // Must end the stream as per AWS documentation
     responseStream.end();
   } catch (error: any) {
     console.error('Streaming chat error:', error);
@@ -211,5 +199,4 @@ export const streamHandler = async (
   }
 };
 
-// Wrapper to enable TRUE response streaming
 export const handler = awslambda.streamifyResponse(streamHandler);
