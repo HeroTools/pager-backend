@@ -30,8 +30,10 @@
     "generate:env": "tsx scripts/generate-env.ts",
     "local:dev": "npm run generate:env dev && npm run build && sam local start-api -p 8081 --env-vars env.json --config-env dev --profile unowned-prod",
     "local:prod": "npm run generate:env prod && npm run build && sam local start-api -p 8081 --env-vars env.json --config-env prod --profile unowned-prod",
-    "deploy:dev": "npm run generate:env dev && npm run setup:aws dev && npm run build && sam deploy --config-env dev --profile unowned-prod",
-    "deploy:prod": "npm run generate:env prod && npm run setup:aws prod && npm run build && sam deploy --config-env prod --profile unowned-prod"
+    "deploy:dev --setup": "npm run generate:env dev && npm run setup:aws dev && npm run build && sam deploy --config-env dev --profile unowned-prod",
+    "deploy:dev": "npm run build && sam deploy --config-env dev --profile unowned-prod",
+    "deploy:prod --setup": "npm run generate:env prod && npm run setup:aws prod && npm run build && sam deploy --config-env prod --profile unowned-prod",
+    "deploy:prod": "npm run build && sam deploy --config-env prod --profile unowned-prod"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.150",
