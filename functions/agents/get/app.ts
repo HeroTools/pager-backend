@@ -14,11 +14,9 @@ export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     let client;
     try {
-      // 1) Auth check
       const userId = await getUserIdFromToken(event.headers.Authorization);
       if (!userId) return errorResponse('Unauthorized', 401);
 
-      // 2) Validate path parameters
       const pathParamsResult = pathParamsSchema.safeParse(event.pathParameters);
       if (!pathParamsResult.success) {
         return errorResponse(
@@ -28,13 +26,11 @@ export const handler = withCors(
       }
       const { workspaceId } = pathParamsResult.data;
 
-      // 4) Workspace membership check
       const currentMember = await getMember(workspaceId, userId);
       if (!currentMember) return errorResponse('Not a member of this workspace', 403);
 
       client = await dbPool.connect();
 
-      // 5) Get all agents for the workspace
       const query = `
         SELECT
           a.id,
@@ -44,18 +40,13 @@ export const handler = withCors(
           a.avatar_url,
           a.is_active,
           a.created_at,
-          a.updated_at,
-          u.name as created_by_name,
-          u.image as created_by_image
+          a.updated_at
         FROM agents a
-        LEFT JOIN users u ON a.created_by_user_id = u.id
         WHERE a.workspace_id = $1
-        ORDER BY a.created_at DESC
       `;
 
       const result = await client.query(query, [workspaceId]);
 
-      // 6) Transform to frontend format
       const agents = result.rows.map((row: any) => ({
         id: row.id,
         name: row.name,
@@ -65,12 +56,6 @@ export const handler = withCors(
         is_active: row.is_active,
         created_at: row.created_at,
         updated_at: row.updated_at,
-        created_by: row.created_by_name
-          ? {
-              name: row.created_by_name,
-              image: row.created_by_image,
-            }
-          : null,
       }));
 
       return successResponse(agents, 200);
