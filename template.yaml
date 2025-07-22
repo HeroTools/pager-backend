@@ -1506,6 +1506,28 @@ Resources:
         EntryPoints:
           - get/app.ts
 
+  UpdateAgentNameFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/agents
+      Handler: update-name/app.handler
+      Runtime: nodejs22.x
+      Timeout: 30
+      MemorySize: 128
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/agents/{agentId}/rename
+            Method: put
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - update-name/app.ts
+
   AgentChatFunction:
     Type: AWS::Serverless::Function
     Properties:
