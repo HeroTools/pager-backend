@@ -4,11 +4,20 @@ import { registerTypes, toSql } from 'pgvector/pg';
 import { z } from 'zod';
 import dbPool from '../../../common/utils/create-db-pool';
 import { createEmbedding } from '../../../common/utils/create-embedding';
+import { summarizingProcessor } from '../helpers/efficient-message-processor';
 
 export const searchWorkspaceMessages = tool({
   name: 'search_workspace_messages',
-  description:
-    'Search workspace messages with optional time filtering. Use this when users ask about information from their workspace history. Searches only human team messages, excludes AI chat conversations.',
+  description: `Search workspace messages with smart preprocessing to avoid token limits.
+
+  Enhanced features:
+  - Automatically filters low-quality/boilerplate messages
+  - Scores messages by importance (decisions, actions, questions get priority)
+  - Limits results to most relevant messages to stay within token limits
+  - Provides metadata about search quality and suggestions
+
+  Use this when users ask about specific topics, decisions, or information from workspace history.`,
+
   parameters: z.object({
     query: z.string().describe('The search query to find relevant messages'),
     timeframe_start: z
@@ -33,26 +42,29 @@ export const searchWorkspaceMessages = tool({
       .number()
       .int()
       .min(1)
-      .max(50)
-      .default(10)
-      .describe('Maximum number of results to return'),
+      .max(200) // Increased since we'll filter down
+      .default(50)
+      .describe(
+        'Maximum number of results to retrieve from database (will be filtered for quality)',
+      ),
   }),
+
   async execute(params, context) {
     const { workspaceId, userId } = context?.context;
 
     try {
-      // Create embedding for semantic search
+      console.log('🔍 Enhanced search starting:', { query: params.query, limit: params.limit });
+
       const embedding = await createEmbedding(params.query);
 
       const client = await dbPool.connect();
       await registerTypes(client);
+
       try {
-        // Build dynamic query based on filters
         const filters = [];
         const values = [workspaceId, userId, toSql(embedding), 0.6, params.limit];
         let paramIndex = 6;
 
-        // Handle timeframe (now using separate start/end fields)
         if (params.timeframe_start && params.timeframe_end) {
           filters.push(`m.created_at BETWEEN $${paramIndex} AND $${paramIndex + 1}`);
           values.push(params.timeframe_start, params.timeframe_end);
@@ -70,16 +82,6 @@ export const searchWorkspaceMessages = tool({
           values.push(`%${params.channel_name}%`);
           paramIndex++;
         }
-
-        console.log(
-          workspaceId,
-          userId,
-          params.limit,
-          params.timeframe_start,
-          params.timeframe_end,
-          params.channel_id,
-          params.channel_name,
-        );
 
         const whereClause = filters.length ? `AND ${filters.join(' AND ')}` : '';
 
@@ -126,12 +128,7 @@ export const searchWorkspaceMessages = tool({
               m.sender_type,
               u.name AS author_name,
               u.image AS author_image,
-              ac.channel_name,
-              CASE
-                WHEN me.channel_id IS NOT NULL THEN 'channel'
-                WHEN me.conversation_id IS NOT NULL THEN 'conversation'
-                ELSE 'unknown'
-              END AS context_type
+              ac.channel_name
             FROM message_embeddings me
             JOIN messages m ON me.message_id = m.id
             JOIN workspace_members wm ON m.workspace_member_id = wm.id
@@ -161,32 +158,69 @@ export const searchWorkspaceMessages = tool({
             author_image,
             channel_id,
             channel_name,
-            conversation_id,
-            context_type
+            conversation_id
           FROM search_results
           ORDER BY similarity DESC;
         `;
 
         const result = await client.query(sql, values);
+        console.log(`📊 Database returned ${result.rows.length} raw messages`);
 
-        console.log('SEARCH', result.rows);
+        if (result.rows.length === 0) {
+          return {
+            results: [],
+            query: params.query,
+            totalFound: 0,
+            processedCount: 0,
+            metadata: {
+              avgImportance: 0,
+              messageTypes: {},
+              recommendation: 'No messages found - try broader search terms',
+            },
+            timeframe:
+              params.timeframe_start && params.timeframe_end
+                ? {
+                    start: params.timeframe_start,
+                    end: params.timeframe_end,
+                  }
+                : null,
+          };
+        }
+
+        const rawMessages = result.rows.map((row) => ({
+          messageId: row.message_id,
+          content: row.content,
+          similarity: parseFloat(row.similarity),
+          timestamp: row.created_at,
+          senderType: row.sender_type,
+          author: row.author_name,
+          authorImage: row.author_image,
+          channelId: row.channel_id,
+          channelName: row.channel_name,
+          conversationId: row.conversation_id,
+          contextType: row.channel_id ? 'channel' : 'conversation',
+          updatedAt: row.updated_at,
+          editedAt: row.edited_at,
+          messageType: row.message_type,
+          parentMessageId: row.parent_message_id,
+          threadId: row.thread_id,
+          isThreadReply: row.parent_message_id !== null,
+        }));
+
+        // Process messages for quality and importance
+        const processedMessages = await summarizingProcessor.process(rawMessages);
+
+        console.log(`✅ Processed to ${processedMessages.length} high-quality messages`);
 
         return {
-          results: result.rows.map((row) => ({
-            messageId: row.message_id,
-            content: row.content,
-            similarity: parseFloat(row.similarity),
-            timestamp: row.created_at,
-            senderType: row.sender_type,
-            author: row.author_name,
-            authorImage: row.author_image,
-            channelId: row.channel_id,
-            channelName: row.channel_name,
-            conversationId: row.conversation_id,
-            contextType: row.context_type,
-          })),
+          results: processedMessages,
           query: params.query,
           totalFound: result.rows.length,
+          processedCount: processedMessages.length,
+          metadata: {
+            processingApplied: true,
+            qualityFilter: `Filtered ${result.rows.length} → ${processedMessages.length} messages`,
+          },
           timeframe:
             params.timeframe_start && params.timeframe_end
               ? {
@@ -199,11 +233,12 @@ export const searchWorkspaceMessages = tool({
         client.release();
       }
     } catch (error) {
-      console.error('Search workspace messages error:', error);
+      console.error('❌ Enhanced search error:', error);
       return {
         results: [],
         query: params.query,
         totalFound: 0,
+        processedCount: 0,
         error: error.message,
       };
     }
