@@ -1,12 +1,13 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { getUserIdFromToken } from '../../common/helpers/auth';
-import { errorResponse, successResponse } from '../../common/utils/response';
-import dbPool from '../../common/utils/create-db-pool';
 import { withCors } from '../../common/utils/cors';
+import dbPool from '../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../common/utils/response';
 
 interface CreateWorkspaceBody {
   name: string;
+  agentName?: string;
 }
 
 export const handler = withCors(
@@ -30,20 +31,26 @@ export const handler = withCors(
         return errorResponse('Invalid JSON in request body', 400);
       }
 
-      const { name } = body;
+      const { name, agentName = 'Assistant' } = body;
+
       if (!name?.trim() || name.trim().length < 3) {
         return errorResponse('Name is required and must be at least 3 characters long', 400);
       }
 
+      if (agentName && (agentName.trim().length < 2 || agentName.trim().length > 255)) {
+        return errorResponse('Agent name must be between 2 and 255 characters', 400);
+      }
+
       const trimmedName = name.trim();
+      const trimmedAgentName = agentName.trim();
 
       client = await dbPool.connect();
 
       const result = await client.query(
         `
             WITH new_workspace AS (
-                INSERT INTO workspaces (name, user_id) 
-                VALUES ($1, $2) 
+                INSERT INTO workspaces (name, user_id)
+                VALUES ($1, $2)
                 RETURNING id
             ),
             new_member AS (
@@ -58,7 +65,7 @@ export const handler = withCors(
             ),
             channel_membership AS (
                 INSERT INTO channel_members (workspace_member_id, channel_id, role, notifications_enabled)
-                SELECT nm.id, nc.id, 'admin', true 
+                SELECT nm.id, nc.id, 'admin', true
                 FROM new_member nm, new_channel nc
             ),
             new_conversation AS (
@@ -70,15 +77,29 @@ export const handler = withCors(
                 INSERT INTO conversation_members (conversation_id, workspace_member_id)
                 SELECT nc.id, nm.id
                 FROM new_conversation nc, new_member nm
+            ),
+            new_agent AS (
+                INSERT INTO agents (workspace_id, name, description, model, created_by_user_id)
+                SELECT workspace_id, $3, 'Default AI assistant for your workspace', 'gpt-4', $2
+                FROM new_member
+                RETURNING id, name, description, model, avatar_url, is_active, created_at, updated_at
             )
-            SELECT 
+            SELECT
                 nw.id as workspace_id,
                 nm.id as member_id,
                 nc.id as channel_id,
-                nconv.id as conversation_id
-            FROM new_workspace nw, new_member nm, new_channel nc, new_conversation nconv
+                nconv.id as conversation_id,
+                na.id as agent_id,
+                na.name as agent_name,
+                na.description as agent_description,
+                na.model as agent_model,
+                na.avatar_url as agent_avatar_url,
+                na.is_active as agent_is_active,
+                na.created_at as agent_created_at,
+                na.updated_at as agent_updated_at
+            FROM new_workspace nw, new_member nm, new_channel nc, new_conversation nconv, new_agent na
             `,
-        [trimmedName, userId],
+        [trimmedName, userId, trimmedAgentName],
       );
 
       const workspaceData = result.rows[0];
@@ -88,6 +109,16 @@ export const handler = withCors(
         name: trimmedName,
         role: 'admin',
         workspaceMemberId: workspaceData.member_id,
+        defaultAgent: {
+          id: workspaceData.agent_id,
+          name: workspaceData.agent_name,
+          description: workspaceData.agent_description,
+          model: workspaceData.agent_model,
+          avatar_url: workspaceData.agent_avatar_url,
+          is_active: workspaceData.agent_is_active,
+          created_at: workspaceData.agent_created_at,
+          updated_at: workspaceData.agent_updated_at,
+        },
         message: 'Workspace created successfully',
       });
     } catch (error: unknown) {
