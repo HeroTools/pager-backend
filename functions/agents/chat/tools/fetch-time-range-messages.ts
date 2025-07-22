@@ -2,11 +2,20 @@
 import { tool } from '@openai/agents';
 import { z } from 'zod';
 import dbPool from '../../../common/utils/create-db-pool';
+import { summarizingProcessor } from '../helpers/efficient-message-processor';
 
 export const fetchTimeRangeMessages = tool({
   name: 'fetch_time_range_messages',
-  description:
-    'Fetch human messages chronologically within a time range for comprehensive summaries and analysis. Use this for broader temporal queries like "what happened yesterday" rather than specific searches. Excludes AI chat messages.',
+  description: `Efficiently fetch messages from a time range with smart preprocessing to handle large datasets.
+
+  Enhanced features:
+  - Automatically filters noise and scores message importance
+  - Limits results to highest-quality messages to avoid token limits
+  - Provides intelligent grouping and analysis metadata
+  - Handles large datasets gracefully with quality indicators
+
+  Use this for comprehensive temporal queries like "what happened yesterday" or "show me this week's activity".`,
+
   parameters: z.object({
     timeframe_start: z.string().datetime().describe('Start time in ISO format'),
     timeframe_end: z.string().datetime().describe('End time in ISO format'),
@@ -22,9 +31,11 @@ export const fetchTimeRangeMessages = tool({
       .number()
       .int()
       .min(1)
-      .max(500)
-      .default(100)
-      .describe('Maximum number of messages to return'),
+      .max(500) // Keep your existing limit
+      .default(200) // Increased default since we'll filter
+      .describe(
+        'Maximum number of messages to retrieve from database (will be filtered for quality)',
+      ),
     offset: z.number().int().min(0).default(0).describe('Offset for pagination'),
     include_system_messages: z
       .boolean()
@@ -35,13 +46,21 @@ export const fetchTimeRangeMessages = tool({
       .default(true)
       .describe('Group results by channel/conversation for easier analysis'),
   }),
+
   async execute(params, context) {
     const { workspaceId, userId } = context?.context;
 
     try {
+      console.log('📅 Enhanced time range query:', {
+        start: params.timeframe_start,
+        end: params.timeframe_end,
+        limit: params.limit,
+      });
+
       const client = await dbPool.connect();
+
       try {
-        // First, get a count to check if we're dealing with a large dataset
+        // Your existing count query (unchanged)
         const countSql = `
           WITH user_workspace_member AS (
             SELECT id AS workspace_member_id
@@ -100,11 +119,8 @@ export const fetchTimeRangeMessages = tool({
 
         const countResult = await client.query(countSql, countValues);
         const totalMessages = parseInt(countResult.rows[0].total_messages);
-
-        // If we have a large dataset, provide a warning
         const isLargeDataset = totalMessages > 200;
 
-        // Build the main query
         const filters = [];
         const values = [workspaceId, userId, params.timeframe_start, params.timeframe_end];
         let paramIndex = 5;
@@ -173,16 +189,7 @@ export const fetchTimeRangeMessages = tool({
             u.id AS author_id,
             m.channel_id,
             ac.channel_name,
-            m.conversation_id,
-            CASE
-              WHEN m.channel_id IS NOT NULL THEN 'channel'
-              WHEN m.conversation_id IS NOT NULL THEN 'conversation'
-              ELSE 'unknown'
-            END AS context_type,
-            CASE
-              WHEN m.parent_message_id IS NOT NULL THEN true
-              ELSE false
-            END AS is_thread_reply
+            m.conversation_id
           FROM messages m
           JOIN workspace_members wm ON m.workspace_member_id = wm.id
           JOIN users u ON wm.user_id = u.id
@@ -203,9 +210,9 @@ export const fetchTimeRangeMessages = tool({
         `;
 
         const result = await client.query(sql, values);
+        console.log(`📊 Database returned ${result.rows.length} raw messages`);
 
-        // Group messages by context if requested
-        const messages = result.rows.map((row) => ({
+        const rawMessages = result.rows.map((row) => ({
           messageId: row.message_id,
           content: row.content,
           timestamp: row.created_at,
@@ -223,13 +230,16 @@ export const fetchTimeRangeMessages = tool({
           channelId: row.channel_id,
           channelName: row.channel_name,
           conversationId: row.conversation_id,
-          contextType: row.context_type,
-          isThreadReply: row.is_thread_reply,
+          contextType: row.channel_id ? 'channel' : 'conversation',
+          isThreadReply: row.parent_message_id !== null,
         }));
 
+        const processedMessages = await summarizingProcessor.process(rawMessages);
+
+        // Group messages by context if requested
         let groupedMessages = null;
         if (params.group_by_channel) {
-          groupedMessages = messages.reduce(
+          groupedMessages = processedMessages.reduce(
             (acc, message) => {
               const key =
                 message.contextType === 'channel'
@@ -244,22 +254,36 @@ export const fetchTimeRangeMessages = tool({
                   contextName:
                     message.contextType === 'channel' ? message.channelName : 'Direct Message',
                   messages: [],
+                  messageCount: 0,
+                  avgImportance: 0,
                 };
               }
 
               acc[key].messages.push(message);
+              acc[key].messageCount++;
+              acc[key].avgImportance =
+                acc[key].messages.reduce((sum: number, m: any) => sum + (m.importance || 0.5), 0) /
+                acc[key].messageCount;
+
               return acc;
             },
             {} as Record<string, any>,
           );
         }
 
+        console.log(`✅ Processed to ${processedMessages.length} high-quality messages`);
+
         return {
-          messages,
+          messages: processedMessages,
           groupedMessages,
           totalMessages,
           returnedCount: result.rows.length,
+          processedCount: processedMessages.length,
           isLargeDataset,
+          metadata: {
+            qualityFilter: `Filtered ${result.rows.length} → ${processedMessages.length} messages`,
+            processingApplied: true,
+          },
           timeframe: {
             start: params.timeframe_start,
             end: params.timeframe_end,
@@ -269,20 +293,18 @@ export const fetchTimeRangeMessages = tool({
             offset: params.offset,
             hasMore: params.offset + result.rows.length < totalMessages,
           },
-          warning: isLargeDataset
-            ? `Large dataset detected (${totalMessages} messages). Consider filtering by channel or using smaller time ranges for better performance.`
-            : null,
         };
       } finally {
         client.release();
       }
     } catch (error) {
-      console.error('Fetch time range messages error:', error);
+      console.error('❌ Enhanced time range error:', error);
       return {
         messages: [],
         groupedMessages: null,
         totalMessages: 0,
         returnedCount: 0,
+        processedCount: 0,
         error: error.message,
         timeframe: {
           start: params.timeframe_start,

@@ -1,7 +1,10 @@
 import OpenAI from 'openai';
 
 // Initialize OpenAI client (ensure OPENAI_API_KEY is set in your environment)
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+export const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+  maxRetries: 2,
+});
 
 /**
  * Generates a semantic embedding for the given text input.
