@@ -30,7 +30,7 @@ region = "us-east-2"
 image_repositories = []
 disable_rollback = false
 resolve_image_repos = true
-parameter_overrides = "Environment=prod StageName=Prod"
+parameter_overrides = "Environment=prod StageName=Prod StackName=unowned"
 
 [default.package.parameters]
 resolve_s3 = true
@@ -55,4 +55,4 @@ resolve_image_repos = true
 stack_name = "unowned-dev"
 s3_prefix = "unowned-dev"
 region = "us-east-2"
-parameter_overrides = "Environment=dev StageName=Dev"
+parameter_overrides = "Environment=dev StageName=Dev StackName=unowned-dev"

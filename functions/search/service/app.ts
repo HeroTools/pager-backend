@@ -2,13 +2,14 @@ import { APIGatewayProxyHandler } from 'aws-lambda';
 import OpenAI from 'openai';
 import { registerTypes, toSql } from 'pgvector/pg';
 import { z } from 'zod';
-import { successResponse, errorResponse } from '../../common/utils/response';
-import dbPool from '../../common/utils/create-db-pool';
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import { SearchRequest, SearchResponse, SearchResult } from '../types';
-import { withCors } from '../../common/utils/cors';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+import { getUserIdFromToken } from '../../common/helpers/auth';
+import { withCors } from '../../common/utils/cors';
+import dbPool from '../../common/utils/create-db-pool';
+import { openai } from '../../common/utils/create-embedding';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import { SearchRequest, SearchResponse, SearchResult } from '../types';
+
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-3-small';
 const CHAT_MODEL = process.env.CHAT_MODEL || 'gpt-4.1';
 const SEARCH_LIMIT = parseInt(process.env.SEARCH_LIMIT || '20');
@@ -110,7 +111,7 @@ export const handler: APIGatewayProxyHandler = withCors(async (event, _ctx) => {
       content: [
         {
           type: 'input_text' as const,
-          text: `You are an assistant that answers queries about a chat workspace by citing message IDs. 
+          text: `You are an assistant that answers queries about a chat workspace by citing message IDs.
                     You are to be concise and provide only the answer and citations, without any additional explanation.`,
         },
       ],
