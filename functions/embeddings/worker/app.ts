@@ -1,7 +1,7 @@
-import { SQSHandler, SQSEvent } from 'aws-lambda';
+import { SQSEvent, SQSHandler } from 'aws-lambda';
 import OpenAI from 'openai';
-import { supabase } from '../../common/utils/supabase-client';
 import { successResponse } from '../../common/utils/response';
+import { supabase } from '../../common/utils/supabase-client';
 
 function getEnv<T>(key: string, parser: (v: string) => T, defaultValue?: T): T {
   const raw = process.env[key];
@@ -239,8 +239,6 @@ async function createThreadSummary(
     max_output_tokens: 250,
     input: [systemMessage, userMessage],
   });
-
-  console.log(output?.[0].content?.[0].text?.trim());
 
   if (output?.[0].content?.[0].text) {
     return output?.[0].content?.[0].text?.trim() ?? '';

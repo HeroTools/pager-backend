@@ -1,39 +1,42 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: >
-  unowned-api
 
 Parameters:
   StageName:
     Type: String
     Default: Prod
-    Description: 'The stage name for the deployment (Dev or Prod)'
-    AllowedValues:
-      - Dev
-      - Prod
-
-Conditions:
-  IsDev: !Equals [!Ref StageName, Dev]
-  IsProd: !Equals [!Ref StageName, Prod]
+    AllowedValues: [Dev, Prod]
+  StackName:
+    Type: String
+    Default: unowned
+    AllowedValues: [unowned, unowned-dev]
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
 
 Globals:
   Function:
     Timeout: 180
     MemorySize: 512
+    Runtime: nodejs22.x
+    Architectures:
+      - arm64
     Environment:
       Variables:
-        OPENAI_API_KEY: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/openai-api-key:}}'
-        GOOGLE_CLIENT_ID: !Sub '{{resolve:ssm:/unowned/${StageName}/google-client-id:}}'
-        SUPABASE_URL: !Sub '{{resolve:ssm:/unowned/${StageName}/supabase-url}}'
-        SUPABASE_ANON_KEY: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/supabase-anon-key:}}'
-        SUPABASE_SERVICE_ROLE_KEY: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/supabase-service-role-key:}}'
-        PG_USER: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-user:}}'
-        PG_HOST: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-host:}}'
-        PG_DATABASE: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-database:}}'
-        PG_PASSWORD: !Sub '{{resolve:ssm-secure:/unowned/${StageName}/pg-password:}}'
-        PG_PORT: !Sub '{{resolve:ssm:/unowned/${StageName}/pg-port:}}'
-        FRONTEND_URL: !Sub '{{resolve:ssm:/unowned/${StageName}/frontend-url:}}'
-        ALLOWED_ORIGINS: !Sub '{{resolve:ssm:/unowned/${StageName}/allowed-origins:}}'
+        OPENAI_API_KEY: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/openai-api-key:SecretString}}'
+        GOOGLE_CLIENT_ID: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/google-client-id:SecretString}}'
+        SUPABASE_URL: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/supabase-url:SecretString}}'
+        SUPABASE_ANON_KEY: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/supabase-anon-key:SecretString}}'
+        SUPABASE_SERVICE_ROLE_KEY: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/supabase-service-role-key:SecretString}}'
+        PG_USER: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-user:SecretString}}'
+        PG_HOST: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-host:SecretString}}'
+        PG_DATABASE: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-database:SecretString}}'
+        PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-password:SecretString}}'
+        PG_PORT: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-port:SecretString}}'
+        FRONTEND_URL: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/frontend-url:SecretString}}'
+        ALLOWED_ORIGINS: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/allowed-origins:SecretString}}'
+
   Api:
     Cors:
       AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
@@ -60,9 +63,6 @@ Resources:
     Properties:
       CodeUri: functions/workspaces
       Handler: create/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         CreateWorkspace:
           Type: Api
@@ -84,9 +84,6 @@ Resources:
     Properties:
       CodeUri: functions/workspaces
       Handler: get/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetWorkspaces:
           Type: Api
@@ -109,8 +106,6 @@ Resources:
       CodeUri: functions/workspaces
       Handler: get-by-id/app.handler
       Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetWorkspaceById:
           Type: Api
@@ -132,9 +127,6 @@ Resources:
     Properties:
       CodeUri: functions/workspaces
       Handler: get-from-invite-token/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetWorkspaceFromInviteToken:
           Type: Api
@@ -156,9 +148,6 @@ Resources:
     Properties:
       CodeUri: functions/workspaces
       Handler: update/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         UpdateWorkspace:
           Type: Api
@@ -180,9 +169,6 @@ Resources:
     Properties:
       CodeUri: functions/workspaces
       Handler: delete/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         DeleteWorkspace:
           Type: Api
@@ -204,9 +190,6 @@ Resources:
     Properties:
       CodeUri: functions/messages
       Handler: send/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Policies:
         - AWSLambdaBasicExecutionRole
         - Version: '2012-10-17'
@@ -249,9 +232,6 @@ Resources:
     Properties:
       CodeUri: functions/messages
       Handler: get-message-replies/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetMessageReplies:
           Type: Api
@@ -273,9 +253,6 @@ Resources:
     Properties:
       CodeUri: functions/messages
       Handler: typing-indicator/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         ChannelTyping:
           Type: Api
@@ -303,9 +280,6 @@ Resources:
     Properties:
       CodeUri: functions/messages
       Handler: get/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetMessages:
           Type: Api
@@ -327,9 +301,6 @@ Resources:
     Properties:
       CodeUri: functions/messages
       Handler: get-by-id/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetMessageById:
           Type: Api
@@ -351,9 +322,6 @@ Resources:
     Properties:
       CodeUri: functions/messages
       Handler: update/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         UpdateMessage:
           Type: Api
@@ -375,9 +343,6 @@ Resources:
     Properties:
       CodeUri: functions/messages
       Handler: delete/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         DeleteMessage:
           Type: Api
@@ -399,9 +364,6 @@ Resources:
     Properties:
       CodeUri: functions/notifications
       Handler: service/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -416,9 +378,6 @@ Resources:
     Properties:
       CodeUri: functions/notifications
       Handler: mark-as-read/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         MarkAsRead:
           Type: Api
@@ -440,9 +399,6 @@ Resources:
     Properties:
       CodeUri: functions/notifications
       Handler: mark-all-as-read/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         MarkAllAsRead:
           Type: Api
@@ -464,9 +420,6 @@ Resources:
     Properties:
       CodeUri: functions/notifications
       Handler: get-unread-count/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetUnreadCount:
           Type: Api
@@ -488,9 +441,6 @@ Resources:
     Properties:
       CodeUri: functions/notifications
       Handler: get/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetNotifications:
           Type: Api
@@ -512,9 +462,6 @@ Resources:
     Properties:
       CodeUri: functions/channels
       Handler: get-all-available/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetAllAvailableChannels:
           Type: Api
@@ -536,9 +483,6 @@ Resources:
     Properties:
       CodeUri: functions/channels
       Handler: get-user-channels/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetUserChannels:
           Type: Api
@@ -560,9 +504,6 @@ Resources:
     Properties:
       CodeUri: functions/channels
       Handler: add-members/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         AddMembersToChannel:
           Type: Api
@@ -584,9 +525,6 @@ Resources:
     Properties:
       CodeUri: functions/channels
       Handler: remove-members/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         RemoveMembersFromChannel:
           Type: Api
@@ -608,9 +546,6 @@ Resources:
     Properties:
       CodeUri: functions/channels
       Handler: get-messages/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetChannelMessages:
           Type: Api
@@ -632,9 +567,6 @@ Resources:
     Properties:
       CodeUri: functions/channels
       Handler: get-members/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetChannelMembers:
           Type: Api
@@ -656,9 +588,6 @@ Resources:
     Properties:
       CodeUri: functions/channels
       Handler: create/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         CreateChannel:
           Type: Api
@@ -680,9 +609,6 @@ Resources:
     Properties:
       CodeUri: functions/channels
       Handler: get-by-id/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetChannelById:
           Type: Api
@@ -704,9 +630,6 @@ Resources:
     Properties:
       CodeUri: functions/channels
       Handler: update/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         UpdateChannel:
           Type: Api
@@ -728,9 +651,6 @@ Resources:
     Properties:
       CodeUri: functions/channels
       Handler: delete/delete-channel.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Environment:
         Variables:
           MESSAGE_CLEANUP_FUNCTION_ARN: !GetAtt MessageCleanupFunction.Arn
@@ -767,9 +687,6 @@ Resources:
     Properties:
       CodeUri: functions/channels
       Handler: delete/message-cleanup.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Timeout: 900 # 15 minutes for large channels
     Metadata:
       BuildMethod: esbuild
@@ -785,9 +702,6 @@ Resources:
     Properties:
       CodeUri: functions/conversations
       Handler: create-or-get/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         CreateOrGetConversation:
           Type: Api
@@ -809,9 +723,6 @@ Resources:
     Properties:
       CodeUri: functions/conversations
       Handler: get/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetConversations:
           Type: Api
@@ -833,9 +744,6 @@ Resources:
     Properties:
       CodeUri: functions/conversations
       Handler: get-members/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetConversationMembers:
           Type: Api
@@ -857,9 +765,6 @@ Resources:
     Properties:
       CodeUri: functions/conversations
       Handler: get-by-id/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetConversationById:
           Type: Api
@@ -881,9 +786,6 @@ Resources:
     Properties:
       CodeUri: functions/conversations
       Handler: get-messages/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetConversationMessages:
           Type: Api
@@ -905,9 +807,6 @@ Resources:
     Properties:
       CodeUri: functions/conversations
       Handler: delete/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         DeleteConversation:
           Type: Api
@@ -929,9 +828,6 @@ Resources:
     Properties:
       CodeUri: functions/members/current
       Handler: app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetCurrentMember:
           Type: Api
@@ -953,9 +849,6 @@ Resources:
     Properties:
       CodeUri: functions/members/get
       Handler: app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetMembers:
           Type: Api
@@ -977,9 +870,6 @@ Resources:
     Properties:
       CodeUri: functions/members/get-by-id
       Handler: app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetMemberById:
           Type: Api
@@ -1001,9 +891,6 @@ Resources:
     Properties:
       CodeUri: functions/members/update
       Handler: app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         UpdateMember:
           Type: Api
@@ -1025,9 +912,6 @@ Resources:
     Properties:
       CodeUri: functions/members/remove
       Handler: app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         RemoveMember:
           Type: Api
@@ -1049,9 +933,6 @@ Resources:
     Properties:
       CodeUri: functions/auth
       Handler: sign-up/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         SignUp:
           Type: Api
@@ -1073,9 +954,6 @@ Resources:
     Properties:
       CodeUri: functions/auth
       Handler: sign-in/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         SignIn:
           Type: Api
@@ -1097,9 +975,6 @@ Resources:
     Properties:
       CodeUri: functions/auth
       Handler: get-invite-link/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetInviteLink:
           Type: Api
@@ -1121,9 +996,6 @@ Resources:
     Properties:
       CodeUri: functions/auth
       Handler: sign-out/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         SignOut:
           Type: Api
@@ -1145,9 +1017,6 @@ Resources:
     Properties:
       CodeUri: functions/auth
       Handler: current-user/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetCurrentUser:
           Type: Api
@@ -1169,9 +1038,6 @@ Resources:
     Properties:
       CodeUri: functions/auth
       Handler: update-profile/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         UpdateProfile:
           Type: Api
@@ -1193,9 +1059,6 @@ Resources:
     Properties:
       CodeUri: functions/auth
       Handler: update-user-preferences/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         UpdateUserPreferences:
           Type: Api
@@ -1217,9 +1080,6 @@ Resources:
     Properties:
       CodeUri: functions/auth
       Handler: reset-password-request/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         ResetPasswordRequest:
           Type: Api
@@ -1241,9 +1101,6 @@ Resources:
     Properties:
       CodeUri: functions/auth
       Handler: update-password/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         UpdatePassword:
           Type: Api
@@ -1265,9 +1122,6 @@ Resources:
     Properties:
       CodeUri: functions/auth
       Handler: refresh-token/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         RefreshToken:
           Type: Api
@@ -1289,9 +1143,6 @@ Resources:
     Properties:
       CodeUri: functions/auth
       Handler: verify-email/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         VerifyEmail:
           Type: Api
@@ -1313,9 +1164,6 @@ Resources:
     Properties:
       CodeUri: functions/reactions
       Handler: toggle/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         ToggleReaction:
           Type: Api
@@ -1337,9 +1185,6 @@ Resources:
     Properties:
       CodeUri: functions/reactions
       Handler: get/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetReactions:
           Type: Api
@@ -1361,9 +1206,6 @@ Resources:
     Properties:
       CodeUri: functions/reactions
       Handler: remove/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         RemoveReaction:
           Type: Api
@@ -1385,9 +1227,6 @@ Resources:
     Properties:
       CodeUri: functions/reactions
       Handler: user-reactions/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetUserReactions:
           Type: Api
@@ -1409,9 +1248,6 @@ Resources:
     Properties:
       CodeUri: functions/reactions
       Handler: stats/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GetReactionStats:
           Type: Api
@@ -1432,9 +1268,6 @@ Resources:
     Properties:
       CodeUri: functions/auth
       Handler: google-auth/app.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Tracing: Active
       Events:
         InitiateGoogleAuth:
@@ -1457,9 +1290,6 @@ Resources:
     Properties:
       CodeUri: functions/attachments/manager
       Handler: generate-presigned-url.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         GeneratePresignedUrl:
           Type: Api
@@ -1480,9 +1310,6 @@ Resources:
     Properties:
       CodeUri: functions/attachments/manager
       Handler: confirm-upload.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         ConfirmUpload:
           Type: Api
@@ -1503,9 +1330,6 @@ Resources:
     Properties:
       CodeUri: functions/attachments/manager
       Handler: delete-attachment.handler
-      Runtime: nodejs22.x
-      Architectures:
-        - arm64
       Events:
         DeleteAttachment:
           Type: Api
@@ -1659,3 +1483,131 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt EmbeddingScheduleRule.Arn
+
+  GetAgentsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/agents
+      Handler: get/app.handler
+      Runtime: nodejs22.x
+      Timeout: 30
+      MemorySize: 128
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/agents
+            Method: get
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get/app.ts
+
+  UpdateAgentNameFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/agents
+      Handler: update-name/app.handler
+      Runtime: nodejs22.x
+      Timeout: 30
+      MemorySize: 128
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/agents/{agentId}/rename
+            Method: put
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - update-name/app.ts
+
+  AgentChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/agents
+      Handler: chat/app.handler # Make sure this exports streamified handler
+      Runtime: nodejs22.x
+      Timeout: 300 # Increased for streaming
+      MemorySize: 1024
+      FunctionUrlConfig:
+        AuthType: NONE
+        InvokeMode: RESPONSE_STREAM
+        Cors:
+          AllowCredentials: false
+          AllowHeaders:
+            - 'Content-Type'
+            - 'Authorization'
+            - 'X-Amz-Date'
+            - 'X-Api-Key'
+            - 'X-Amz-Security-Token'
+          AllowMethods:
+            - 'POST'
+          AllowOrigins:
+            - '*'
+          MaxAge: 86400
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - chat/app.ts
+
+  GetAgentConversationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/agents
+      Handler: get-conversations/app.handler
+      Runtime: nodejs22.x
+      Timeout: 30
+      MemorySize: 128
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/agents/{agentId}/conversations
+            Method: get
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-conversations/app.ts
+
+  GetAgentConversationMessagesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/agents
+      Handler: get-conversation-messages/app.handler
+      Runtime: nodejs22.x
+      Timeout: 30
+      MemorySize: 128
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/agents/{agentId}/conversations/{conversationId}/messages
+            Method: get
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-conversation-messages/app.ts
+
+Outputs:
+  # Function URL for streaming
+  StreamingFunctionUrl:
+    Description: 'Function URL for streaming chat'
+    Value: !GetAtt AgentChatFunctionUrl.FunctionUrl
+    Export:
+      Name: !Sub '${AWS::StackName}-StreamingFunctionUrl'
