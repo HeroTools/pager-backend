@@ -13,10 +13,20 @@ export interface WorkspaceMember {
   is_deactivated: boolean;
 }
 
+export interface Agent {
+  id: string;
+  name: string;
+  description?: string;
+  avatar_url?: string;
+  model: string;
+  is_active: boolean;
+}
+
 export interface ConversationMember {
   id: string;
   conversation_id: string;
-  workspace_member_id: string;
+  workspace_member_id: string | null;
+  ai_agent_id: string | null;
   joined_at: string;
   left_at: string | null;
   is_hidden: boolean;
@@ -28,9 +38,11 @@ export interface ConversationMemberWithDetails {
   joined_at: string;
   left_at: string | null;
   is_hidden: boolean;
+  last_read_message_id: string | null;
   workspace_member: {
     id: string;
     role: string;
+    is_deactivated: boolean;
     user: User;
   };
 }
@@ -40,6 +52,7 @@ export interface Conversation {
   workspace_id: string;
   created_at: string;
   updated_at: string;
+  title?: string;
   members: ConversationMemberWithDetails[];
   member_count: number;
   other_members: ConversationMemberWithDetails[];
@@ -67,15 +80,26 @@ export interface ConversationMemberWithUser {
   };
 }
 
+export interface ConversationMemberWithAgent {
+  id: string;
+  conversation_id: string;
+  ai_agent_id: string;
+  joined_at: string;
+  left_at: string | null;
+  last_read_message_id: string | null;
+  agent: Agent;
+}
+
 export interface ConversationData {
   conversation: {
     id: string;
     workspace_id: string;
     created_at: string;
     updated_at: string;
+    title?: string;
   };
   messages: MessageWithUser[];
-  members: ConversationMemberWithUser[];
+  members: (ConversationMemberWithUser | ConversationMemberWithAgent)[];
   pagination: {
     hasMore: boolean;
     nextCursor: string | null;
