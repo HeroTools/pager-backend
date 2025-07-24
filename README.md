@@ -1,4 +1,4 @@
-# Unowned Backend
+# Pager Backend
 
 A serverless backend built with AWS SAM and TypeScript, providing APIs for workspace management, authentication, messaging, and more.
 
@@ -16,8 +16,8 @@ A serverless backend built with AWS SAM and TypeScript, providing APIs for works
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/DEX-TEAM-AI/unowned-backend.git
-   cd unowned-backend
+   git clone https://github.com/HeroTools/pager-backend.git
+   cd pager-backend
    ```
 
 2. **Install dependencies**
@@ -64,7 +64,7 @@ Your API will be available at `http://localhost:8081` 🎉
 ## 📁 Project Structure
 
 ```
-unowned-backend/
+pager-backend/
 ├── functions/                    # Lambda functions organized by domain
 │   ├── auth/                    # Authentication functions
 │   │   ├── sign-in/
@@ -78,7 +78,7 @@ unowned-backend/
 │   ├── parameters.json          # Your actual config (gitignored)
 │   └── parameters.example.json  # Template for contributors
 ├── scripts/                     # Utility scripts
-│   ├── setup-parameters.ts      # AWS Parameter Store setup
+│   ├── setup-parameters.ts      # AWS Secrets Manager setup
 │   └── generate-env.ts          # Local environment generation
 ├── template.yaml                # SAM template (60+ functions)
 └── samconfig.toml              # SAM deployment configuration
@@ -95,44 +95,48 @@ npm run local:dev
 # Build the project
 npm run build
 
-# Run tests
-npm run test
-
-# Lint code
+# Lint and format code
 npm run lint
+npm run format
 ```
 
 ### Available Scripts
 
-| Script                | Description                         |
-| --------------------- | ----------------------------------- |
-| `npm run local:dev`   | Start local development server      |
-| `npm run local:prod`  | Start local server with prod config |
-| `npm run deploy:dev`  | Deploy to dev environment           |
-| `npm run deploy:prod` | Deploy to production                |
-| `npm run setup:local` | Set up local configuration          |
-| `npm run setup:aws`   | Configure AWS Parameter Store       |
+| Script                      | Description                         |
+| --------------------------- | ----------------------------------- |
+| `npm run local:dev`         | Start local development server      |
+| `npm run local:prod`        | Start local server with prod config |
+| `npm run deploy:dev`        | Deploy to dev environment           |
+| `npm run deploy:dev:setup`  | Deploy to dev with secrets setup    |
+| `npm run deploy:prod`       | Deploy to production                |
+| `npm run deploy:prod:setup` | Deploy to prod with secrets setup   |
+| `npm run setup:local`       | Set up local configuration          |
+| `npm run setup:aws`         | Configure AWS Secrets Manager       |
+| `npm run generate:env`      | Generate environment variables      |
+| `npm run build`             | Build all Lambda functions          |
+| `npm run lint`              | Lint and fix TypeScript code        |
+| `npm run format`            | Format code with Prettier           |
 
 ### Environment Variables
 
-The project uses AWS Parameter Store for secure secret management:
+The project uses AWS Secrets Manager for secure secret management:
 
 - **Local development**: Uses generated `env.json` from your `config/parameters.json`
-- **AWS deployment**: Reads from Parameter Store (`/unowned/dev/` or `/unowned/prod/`)
+- **AWS deployment**: Reads from AWS Secrets Manager (`/unowned/dev/` or `/unowned/prod/`)
 
 ## 🔧 Configuration
 
 ### Required Configuration Values
 
-| Parameter                   | Description                    | Example                                   |
-| --------------------------- | ------------------------------ | ----------------------------------------- |
-| `openai-api-key`            | OpenAI API key for AI features | `sk-...`                                  |
-| `google-client-id`          | Google OAuth client ID         | `123...apps.googleusercontent.com`        |
-| `google-client-secret`      | Google OAuth client secret     | `GOCSPX-...`                              |
-| `supabase-url`              | Supabase project URL           | `https://xxx.supabase.co`                 |
-| `supabase-anon-key`         | Supabase anonymous key         | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` |
-| `supabase-service-role-key` | Supabase service role key      | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` |
-| `pg-password`               | PostgreSQL password            | `your-secure-password`                    |
+| Parameter                   | Description                    | Example                            |
+| --------------------------- | ------------------------------ | ---------------------------------- |
+| `openai-api-key`            | OpenAI API key for AI features | `sk-...`                           |
+| `google-client-id`          | Google OAuth client ID         | `123...apps.googleusercontent.com` |
+| `google-client-secret`      | Google OAuth client secret     | `GOCSPX-...`                       |
+| `supabase-url`              | Supabase project URL           | `https://xxx.supabase.co`          |
+| `supabase-anon-key`         | Supabase anonymous key         | `eyJhbGcixxxxx...`                 |
+| `supabase-service-role-key` | Supabase service role key      | `eyJhbGcixxxxx...`                 |
+| `pg-password`               | PostgreSQL password            | `your-secure-password`             |
 
 ### Optional Configuration
 
@@ -143,24 +147,37 @@ The project uses AWS Parameter Store for secure secret management:
 
 ## 🚀 Deployment
 
-### Development Environment
+### First-time Deployment (with secrets setup)
+
+For your first deployment to each environment, use the setup scripts to configure AWS Secrets Manager:
 
 ```bash
-npm run deploy:dev
+# Development environment (first time)
+npm run deploy:dev:setup
+
+# Production environment (first time)
+npm run deploy:prod:setup
 ```
 
-### Production Environment
+### Regular Deployment
+
+After initial setup, use the regular deployment commands:
 
 ```bash
+# Development environment
+npm run deploy:dev
+
+# Production environment
 npm run deploy:prod
 ```
 
 The deployment will:
 
-1. Set up AWS Parameter Store with your configuration
-2. Build all Lambda functions
-3. Deploy infrastructure using CloudFormation
-4. Configure API Gateway endpoints
+1. Generate environment variables from configuration
+2. Set up AWS Secrets Manager with your configuration (setup only)
+3. Build all Lambda functions
+4. Deploy infrastructure using CloudFormation
+5. Configure API Gateway endpoints
 
 ## 🏗️ Architecture
 
@@ -180,12 +197,13 @@ The deployment will:
 - **Database**: PostgreSQL (via Supabase)
 - **Storage**: AWS S3 (via Supabase Storage)
 - **Authentication**: Supabase Auth
+- **Secrets**: AWS Secrets Manager
 - **Deployment**: AWS SAM/CloudFormation
 - **Monitoring**: AWS CloudWatch
 
 ## 🔐 Security
 
-- All secrets stored in AWS Parameter Store
+- All secrets stored in AWS Secrets Manager
 - Environment variables never contain plain-text secrets
 - JWT token validation on protected endpoints
 - CORS configured for frontend domains
@@ -197,7 +215,7 @@ The deployment will:
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
 3. Set up your local environment (`npm run setup:local`)
 4. Make your changes and test locally (`npm run local:dev`)
-5. Run tests (`npm run test`)
+5. Run linting and formatting (`npm run lint && npm run format`)
 6. Commit your changes (`git commit -m 'Add amazing feature'`)
 7. Push to the branch (`git push origin feature/amazing-feature`)
 8. Open a Pull Request
@@ -209,6 +227,7 @@ The deployment will:
 - Add tests for new functionality
 - Use meaningful commit messages
 - Update documentation as needed
+- Run `npm run lint` and `npm run format` before committing
 
 ## 📝 API Documentation
 
@@ -227,7 +246,7 @@ Full API documentation is available at `/docs` when running locally.
 
 ### Getting Help
 
-1. Check the [Issues](https://github.com/yourusername/unowned-backend/issues) page
+1. Check the [Issues](https://github.com/HeroTools/pager-backend/issues) page
 2. Search existing discussions
 3. Create a new issue with:
    - Clear description of the problem
@@ -246,6 +265,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- Built with [AWS SAM](https://aws.amazon.com/serverless/sam/)
 - Database provided by [Supabase](https://supabase.com/)
 - AI capabilities powered by [OpenAI](https://openai.com/)
