@@ -1,9 +1,9 @@
 import {
   APIGatewayProxyEvent,
   APIGatewayProxyResult,
-  Handler,
-  Context,
   Callback,
+  Context,
+  Handler,
 } from 'aws-lambda';
 
 interface CorsConfig {
@@ -46,10 +46,12 @@ function isAllowedOrigin(origin: string, allowedOrigins: string[]): boolean {
     if (pattern.includes('*')) {
       const escapedPattern = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*');
       const regex = new RegExp(`^${escapedPattern}$`, 'i');
-      return regex.test(origin);
+      const matches = regex.test(origin);
+      return matches;
     }
 
-    return pattern.toLowerCase() === origin.toLowerCase();
+    const exactMatch = pattern.toLowerCase() === origin.toLowerCase();
+    return exactMatch;
   });
 }
 
@@ -77,13 +79,14 @@ export function buildCorsHeaders(
 
   if (origin && isAllowedOrigin(origin, corsConfig.allowedOrigins)) {
     headers['Access-Control-Allow-Origin'] = origin;
-  } else if (corsConfig.allowedOrigins.includes('*')) {
+    if (corsConfig.allowCredentials) {
+      headers['Access-Control-Allow-Credentials'] = 'true';
+    }
+  } else if (corsConfig.allowedOrigins.includes('*') && !corsConfig.allowCredentials) {
     headers['Access-Control-Allow-Origin'] = '*';
   }
 
-  if (corsConfig.allowCredentials && headers['Access-Control-Allow-Origin'] !== '*') {
-    headers['Access-Control-Allow-Credentials'] = 'true';
-  }
+  headers['Vary'] = 'Origin';
 
   if (event.httpMethod === 'OPTIONS') {
     headers['Access-Control-Allow-Methods'] = corsConfig.allowedMethods.join(',');
@@ -139,16 +142,11 @@ export function withCors(
       }
 
       const origin = normalizeOrigin(event);
-      const corsConfig = { ...defaultConfig, ...config };
 
-      if (
-        origin &&
-        !isAllowedOrigin(origin, corsConfig.allowedOrigins) &&
-        !corsConfig.allowedOrigins.includes('*')
-      ) {
+      if (origin && !corsHeaders['Access-Control-Allow-Origin']) {
         return {
           statusCode: 403,
-          headers: {},
+          headers: corsHeaders,
           body: JSON.stringify({ error: 'Origin not allowed' }),
         };
       }
@@ -176,9 +174,13 @@ export function withCors(
         }),
       };
     } catch (error) {
+      console.error('CORS error:', error);
       return {
         statusCode: 400,
-        headers: {},
+        headers: {
+          'Access-Control-Allow-Origin': normalizeOrigin(event) || '*',
+          'Access-Control-Allow-Credentials': 'true',
+        },
         body: JSON.stringify({
           error: error instanceof Error ? error.message : 'CORS error',
         }),
