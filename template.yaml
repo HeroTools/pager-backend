@@ -44,6 +44,34 @@ Globals:
       MaxAge: "'3600'"
       AllowMethods: "'OPTIONS,POST,GET,PUT,DELETE,PATCH'"
       AllowCredentials: "'true'"
+    MethodSettings:
+      # 1) Global catch‑all throttle
+      - ResourcePath: '/*'
+        HttpMethod: '*'
+        ThrottlingBurstLimit: 200 # max concurrent in a short burst
+        ThrottlingRateLimit: 100 # sustained req/sec
+
+      # 2) Chat “send message” endpoint gets its own higher limits
+      - ResourcePath: '/workspaces/{workspaceId}/channels/{channelId}/messages'
+        HttpMethod: 'POST'
+        ThrottlingBurstLimit: 1000
+        ThrottlingRateLimit: 500
+      - ResourcePath: '/workspaces/{workspaceId}/conversations/{conversationId}/messages'
+        HttpMethod: 'POST'
+        ThrottlingBurstLimit: 1000
+        ThrottlingRateLimit: 500
+      - ResourcePath: '/workspaces/{workspaceId}/channels/{channelId}/messages'
+        HttpMethod: 'GET'
+        ThrottlingBurstLimit: 1000
+        ThrottlingRateLimit: 500
+      - ResourcePath: '/workspaces/{workspaceId}/conversations/{conversationId}/messages'
+        HttpMethod: 'GET'
+        ThrottlingBurstLimit: 1000
+        ThrottlingRateLimit: 500
+      - ResourcePath: '/workspaces/{workspaceId}/messages/{messageId}/replies'
+        HttpMethod: 'GET'
+        ThrottlingBurstLimit: 1000
+        ThrottlingRateLimit: 500
 
 Resources:
   MainApi:
@@ -1603,6 +1631,28 @@ Resources:
         Target: es2024
         EntryPoints:
           - get-conversation-messages/app.ts
+
+  MigrationFromSlackFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/migration
+      Handler: from-slack/app.handler
+      Runtime: nodejs22.x
+      Timeout: 900
+      MemorySize: 1024
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/migrate/slack
+            Method: post
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - from-slack/app.ts
 
 Outputs:
   # Function URL for streaming
