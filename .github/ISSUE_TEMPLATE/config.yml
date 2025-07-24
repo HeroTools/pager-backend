@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 Documentation
+    url: https://github.com/HeroTools/pager-backend#readme
+    about: Check the README and documentation first
+  - name: 💬 Discussions
+    url: https://github.com/HeroTools/pager-backend/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: 🔐 Security Issues
+    url: mailto:security@dexteam.ai
+    about: Report security vulnerabilities privately
