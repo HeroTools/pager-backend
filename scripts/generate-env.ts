@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import * as yaml from 'js-yaml';
+import { join } from 'path';
 
 const environment = process.argv[2] || 'dev';
 const configPath = join(process.cwd(), 'config', 'parameters.json');
@@ -37,6 +37,10 @@ const CloudFormationSchema = yaml.DEFAULT_SCHEMA.extend([
   }),
   new yaml.Type('!Base64', { kind: 'scalar', construct: (data) => ({ 'Fn::Base64': data }) }),
   new yaml.Type('!If', { kind: 'sequence', construct: (data) => ({ 'Fn::If': data }) }),
+  new yaml.Type('!FindInMap', {
+    kind: 'sequence',
+    construct: (data) => ({ 'Fn::FindInMap': data }),
+  }),
 ]);
 
 // Parse template.yaml to get all Lambda functions

@@ -15,11 +15,23 @@ Parameters:
     Default: dev
     AllowedValues: [dev, prod]
 
+Mappings:
+  FrontendUrls:
+    dev:
+      url: 'http://localhost:3000'
+    prod:
+      url: 'https://www.app.pager.team'
+  AllowOrigins:
+    dev:
+      origins: http://localhost:3000,https://pager-dev.vercel.app,https://www.app.pager.team
+    prod:
+      origins: https://www.app.pager.team
+
 Globals:
   Function:
     Timeout: 180
     MemorySize: 512
-    Runtime: nodejs22.x
+    Runtime: nodejs20.x
     Architectures:
       - arm64
     Environment:
@@ -34,8 +46,14 @@ Globals:
         PG_DATABASE: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-database:SecretString}}'
         PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-password:SecretString}}'
         PG_PORT: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-port:SecretString}}'
-        FRONTEND_URL: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/frontend-url:SecretString}}'
-        ALLOWED_ORIGINS: http://localhost:3000,https://pager-dev.vercel.app,https://www.app.pager.team
+        FRONTEND_URL: !FindInMap
+          - FrontendUrls
+          - !Ref Environment
+          - url
+        ALLOWED_ORIGINS: !FindInMap
+          - AllowOrigins
+          - !Ref Environment
+          - origins
 
   Api:
     Cors:
