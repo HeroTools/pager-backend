@@ -1,9 +1,10 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getUserIdFromToken } from '../../common/helpers/auth';
-import { supabase } from '../../common/utils/supabase-client';
-import { errorResponse, successResponse } from '../../common/utils/response';
 import { getMember } from '../../common/helpers/get-member';
 import { withCors } from '../../common/utils/cors';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import { supabase } from '../../common/utils/supabase-client';
+import { isNameAllowed } from '../helpers';
 
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -25,6 +26,11 @@ export const handler = withCors(
         return errorResponse('Name is required', 400);
       }
 
+      const trimmedName = name.trim();
+      if (!isNameAllowed(trimmedName)) {
+        return errorResponse('Name contains disallowed words or is reserved', 400);
+      }
+
       const member = await getMember(workspaceId, userId);
 
       if (!member) {
@@ -32,7 +38,10 @@ export const handler = withCors(
       }
 
       // Update workspace
-      const { error } = await supabase.from('workspaces').update({ name }).eq('id', workspaceId);
+      const { error } = await supabase
+        .from('workspaces')
+        .update({ name: trimmedName })
+        .eq('id', workspaceId);
 
       if (error) {
         throw error;

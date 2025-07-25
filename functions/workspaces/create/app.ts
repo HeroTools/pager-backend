@@ -4,6 +4,7 @@ import { getUserIdFromToken } from '../../common/helpers/auth';
 import { withCors } from '../../common/utils/cors';
 import dbPool from '../../common/utils/create-db-pool';
 import { errorResponse, successResponse } from '../../common/utils/response';
+import { isNameAllowed } from '../helpers';
 
 interface CreateWorkspaceBody {
   name: string;
@@ -37,11 +38,15 @@ export const handler = withCors(
         return errorResponse('Name is required and must be at least 3 characters long', 400);
       }
 
+      const trimmedName = name.trim();
+      if (!isNameAllowed(trimmedName)) {
+        return errorResponse('Name contains disallowed words or is reserved', 400);
+      }
+
       if (agentName && (agentName.trim().length < 2 || agentName.trim().length > 255)) {
         return errorResponse('Agent name must be between 2 and 255 characters', 400);
       }
 
-      const trimmedName = name.trim();
       const trimmedAgentName = agentName.trim();
 
       client = await dbPool.connect();
@@ -98,7 +103,7 @@ export const handler = withCors(
                 na.created_at as agent_created_at,
                 na.updated_at as agent_updated_at
             FROM new_workspace nw, new_member nm, new_channel nc, new_conversation nconv, new_agent na
-            `,
+        `,
         [trimmedName, userId, trimmedAgentName],
       );
 
