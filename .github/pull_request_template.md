@@ -12,30 +12,32 @@ Technical approach and implementation details.
 
 ## Testing
 
-- [ ] Tested locally with `npm run dev`
-- [ ] Ran quality checks with `npm run check-all`
-- [ ] Tested in multiple browsers (if UI changes)
-- [ ] Verified accessibility (if UI changes)
+- [ ] Tested locally with `npm run local:dev`
 
+**Testing Details:**
 Describe specific testing steps you took.
 
-## Screenshots
+## Deployment Notes
 
-<!-- Include before/after screenshots for UI changes -->
+- [ ] SAM template updated (if new Lambda functions/resources)
+- [ ] Environment variables documented (if new ones added)
+- [ ] No breaking API changes (or documented below)
 
 ## Checklist
 
-- [ ] Code follows the project's style guidelines
-- [ ] Self-review of the code completed
-- [ ] Code is properly commented (if complex)
-- [ ] Documentation updated (if needed)
-- [ ] No breaking changes (or clearly documented)
-- [ ] Linked related issues (if any)
+- [ ] Code follows project style guidelines
+- [ ] Self-review completed
+- [ ] Complex code documented
+- [ ] Related issues linked
 
 ## Related Issues
 
 <!-- Link related issues using "Fixes #123" or "Closes #123" -->
 
+## Breaking Changes
+
+<!-- If this introduces breaking changes, describe them here -->
+
 ## Additional Notes
 
-<!-- Any additional context, concerns, or areas where you'd like specific feedback -->
+<!-- Any additional context or areas where you'd like specific feedback -->
