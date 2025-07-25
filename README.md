@@ -63,26 +63,50 @@ Your API will be available at `http://localhost:8081` 🎉
 
 ## 📁 Project Structure
 
-```
-pager-backend/
-├── functions/                    # Lambda functions organized by domain
-│   ├── auth/                    # Authentication functions
-│   │   ├── sign-in/
-│   │   ├── sign-up/
-│   │   └── google-auth/
-│   ├── workspaces/              # Workspace management
-│   ├── messages/                # Messaging system
-│   ├── attachments/             # File attachments
-│   └── notifications/           # Push notifications
-├── config/                      # Configuration files
-│   ├── parameters.json          # Your actual config (gitignored)
-│   └── parameters.example.json  # Template for contributors
-├── scripts/                     # Utility scripts
-│   ├── setup-parameters.ts      # AWS Secrets Manager setup
-│   └── generate-env.ts          # Local environment generation
-├── template.yaml                # SAM template (60+ functions)
-└── samconfig.toml              # SAM deployment configuration
-```
+This project follows a domain-driven architecture where functionality is organized by business domains. Each domain contains its own set of Lambda functions, promoting modularity and maintainability.
+
+### Core Directories
+
+- **`functions/`** - Contains all Lambda functions organized by domain:
+  - `agents/` - Agent management functionality
+  - `attachments/` - File attachment handling
+  - `auth/` - Authentication and authorization
+  - `channels/` - Channel management
+  - `conversations/` - Conversation handling
+  - `embeddings/` - Vector embeddings processing
+  - `members/` - Member management
+  - `messages/` - Message processing
+  - `notifications/` - Notification system
+  - `reactions/` - Message reactions
+  - `search/` - Search functionality
+  - `workspaces/` - Workspace management
+  - `common/` - Shared utilities and types used across domains
+  - `migration/` - Slack workspace migrations
+
+- **`supabase/`** - Supabase configuration, database migrations, and schema definitions
+- **`scripts/`** - Utility scripts for generating environment variables and upserting secrets to AWS Secrets Manager
+- **`config/`** - Environment-specific configuration files
+- **`.aws-sam/`** - SAM CLI build artifacts and cache (auto-generated)
+
+### Key Configuration Files
+
+- **`template.yaml`** - SAM template defining all AWS resources and Lambda functions
+- **`samconfig.toml`** - SAM CLI configuration with build caching and deployment settings
+- **`tsconfig.json`** - TypeScript configuration
+- **`package.json`** - Node.js dependencies and scripts
+- **`env.json`** - Environment variables for local development
+
+### Build and Deployment
+
+The project uses **esbuild** for fast bundling and tree-shaking. Only imported packages are included in the final Lambda bundles, keeping deployment sizes minimal.
+
+**Key behaviors:**
+
+- Single `template.yaml` manages all domains and functions
+- Build process compiles all functions but uses aggressive caching
+- Deployments are incremental - only changed functions are updated
+- Shared code changes in `common/` trigger rebuilds for dependent functions
+- Template configuration changes affect all functions
 
 ## 🛠️ Development
 
@@ -138,7 +162,9 @@ The project uses AWS Secrets Manager for secure secret management:
 | `supabase-service-role-key` | Supabase service role key      | `eyJhbGcixxxxx...`                 |
 | `pg-password`               | PostgreSQL password            | `your-secure-password`             |
 
-### Optional Configuration
+### URL Configuration
+
+These are used for CORS and redirecting to the frontend. Please update them in the template.yaml file.
 
 | Parameter         | Description              | Default                 |
 | ----------------- | ------------------------ | ----------------------- |
@@ -193,7 +219,7 @@ The deployment will:
 
 ### Infrastructure
 
-- **Runtime**: Node.js 18.x
+- **Runtime**: Node.js 20.x
 - **Database**: PostgreSQL (via Supabase)
 - **Storage**: AWS S3 (via Supabase Storage)
 - **Authentication**: Supabase Auth
@@ -228,21 +254,6 @@ The deployment will:
 - Use meaningful commit messages
 - Update documentation as needed
 - Run `npm run lint` and `npm run format` before committing
-
-## 📝 API Documentation
-
-The API includes endpoints for:
-
-- `POST /auth/sign-in` - User authentication
-- `GET /auth/me` - Current user profile
-- `GET /workspaces` - List user workspaces
-- `POST /workspaces` - Create new workspace
-- `GET /messages` - Retrieve messages
-- `POST /messages` - Send message
-- `POST /attachments` - Upload files
-- `GET /search` - Search content
-
-Full API documentation is available at `/docs` when running locally.
 
 ### Getting Help
 

@@ -189,8 +189,8 @@ export function withCors(
   };
 }
 
-export function createCorsHandler(config: Partial<CorsConfig> = {}) {
+export const createCorsHandler = (config: Partial<CorsConfig> = {}) => {
   return function <T extends SimpleHandler | FullHandler>(handler: T) {
     return withCors(handler, config);
   };
-}
+};
