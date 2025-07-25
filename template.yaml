@@ -35,7 +35,7 @@ Globals:
         PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-password:SecretString}}'
         PG_PORT: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-port:SecretString}}'
         FRONTEND_URL: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/frontend-url:SecretString}}'
-        ALLOWED_ORIGINS: http://localhost:3000,https://pager-dev.vercel.app,https://app.pager.team
+        ALLOWED_ORIGINS: http://localhost:3000,https://pager-dev.vercel.app,https://www.app.pager.team
 
   Api:
     Cors:
