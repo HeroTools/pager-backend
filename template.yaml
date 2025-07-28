@@ -14,6 +14,10 @@ Parameters:
     Type: String
     Default: dev
     AllowedValues: [dev, prod]
+  DeploymentVersion:
+    Type: String
+    Default: '1.0.0'
+    Description: 'Change this value to force function updates'
 
 Mappings:
   FrontendUrls:
@@ -23,7 +27,7 @@ Mappings:
       url: 'https://www.app.pager.team'
   AllowOrigins:
     dev:
-      origins: http://localhost:3000,https://pager-dev.vercel.app,https://www.app.pager.team
+      origins: http://localhost:3000,https://pager-dev.vercel.app,https://pager-frontend-*.vercel.app
     prod:
       origins: https://www.app.pager.team
 
@@ -36,6 +40,7 @@ Globals:
       - arm64
     Environment:
       Variables:
+        DEPLOYMENT_VERSION: !Ref DeploymentVersion
         OPENAI_API_KEY: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/openai-api-key:SecretString}}'
         GOOGLE_CLIENT_ID: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/google-client-id:SecretString}}'
         SUPABASE_URL: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/supabase-url:SecretString}}'
