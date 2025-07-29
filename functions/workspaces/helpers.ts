@@ -460,8 +460,7 @@ const reservedNames = [
 ];
 
 const commonBypassPatterns = [
-  /(.)\1{2,}/g, // Remove repeated characters (assss -> ass)
-  /[^a-zA-Z0-9]/g, // Remove special characters and spaces
+  /(.)\1{3,}/g, // Only remove 3+ repeated characters (asss -> ass, but keep "book", "glass")
 ];
 
 const leetSpeakMap: Record<string, string> = {
@@ -500,15 +499,9 @@ const normalizeText = (text: string): string => {
 };
 
 const checkWordBoundaries = (text: string, badWord: string): boolean => {
-  // For very short words (1-2 chars), require exact match
-  if (badWord.length <= 2) {
-    const regex = new RegExp(`\\b${badWord}\\b`, 'i');
-    return regex.test(text);
-  }
-
-  // For longer words, allow substring matching but with some context
-  const regex = new RegExp(`(?:^|\\W)${badWord}(?:$|\\W)`, 'i');
-  return regex.test(text) || text.includes(badWord);
+  // Only check whole word matches, not substrings
+  const regex = new RegExp(`\\b${badWord}\\b`, 'i');
+  return regex.test(text);
 };
 
 const profanitySet = new Set(localList.map((word) => word.toLowerCase().trim()));
@@ -527,14 +520,11 @@ export const isNameAllowed = (name: string): boolean => {
     return false;
   }
 
-  // Check against profanity list
+  // Check against profanity list with word boundaries only
   for (const badWord of profanitySet) {
-    // Check both original and normalized versions
     if (
       checkWordBoundaries(originalLower, badWord) ||
-      checkWordBoundaries(normalized, badWord) ||
-      originalLower.includes(badWord) ||
-      normalized.includes(badWord)
+      checkWordBoundaries(normalized, badWord)
     ) {
       return false;
     }
@@ -603,13 +593,11 @@ export const isNameAllowedComprehensive = (name: string): boolean => {
     return false;
   }
 
-  // Check against profanity list with both versions
+  // Check against profanity list with word boundaries only
   for (const badWord of profanitySet) {
     if (
       checkWordBoundaries(originalLower, badWord) ||
-      checkWordBoundaries(normalized, badWord) ||
-      originalLower.includes(badWord) ||
-      normalized.includes(badWord)
+      checkWordBoundaries(normalized, badWord)
     ) {
       return false;
     }
