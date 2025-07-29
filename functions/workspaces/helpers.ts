@@ -499,8 +499,10 @@ const normalizeText = (text: string): string => {
 };
 
 const checkWordBoundaries = (text: string, badWord: string): boolean => {
+  // Escape special regex characters
+  const escaped = badWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   // Only check whole word matches, not substrings
-  const regex = new RegExp(`\\b${badWord}\\b`, 'i');
+  const regex = new RegExp(`\\b${escaped}\\b`, 'i');
   return regex.test(text);
 };
 
