@@ -252,10 +252,14 @@ export const handler = withCors(
                       json_build_object(
                           'id', uf.id,
                           'original_filename', uf.original_filename,
-                          'public_url', uf.public_url,
                           'content_type', uf.content_type,
                           'size_bytes', uf.size_bytes,
-                          'order_index', ma.order_index
+                          'order_index', ma.order_index,
+                          'storage_url', CONCAT(
+                            $2::text,
+                            '/storage/v1/object/files/',
+                            uf.s3_key
+                          )
                       ) ORDER BY ma.order_index
                   ) FILTER (WHERE uf.id IS NOT NULL),
                   '[]'::json
@@ -272,7 +276,10 @@ export const handler = withCors(
                    u.id, u.name, u.email, u.image
       `;
 
-      const { rows: completeRows } = await client.query(completeMessageQuery, [messageId]);
+      const { rows: completeRows } = await client.query(completeMessageQuery, [
+        messageId,
+        process.env.SUPABASE_URL,
+      ]);
 
       if (completeRows.length === 0) {
         await client.query('ROLLBACK');
