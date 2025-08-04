@@ -239,7 +239,7 @@ Resources:
         EntryPoints:
           - delete/app.ts
 
-  # SEND MESSAGE (UNIVERSAL)
+  # SEND MESSAGE
   SendMessageFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -254,10 +254,10 @@ Resources:
               - lambda:InvokeFunctionUrl
               - lambda:InvokeFunction
               - lambda:InvokeAsync
-            Resource: !Sub arn:aws:lambda:*:${AWS::AccountId}:function:*
+            Resource: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*
       Environment:
         Variables:
-          NOTIFICATION_SERVICE_FUNCTION_ARN: !GetAtt NotificationServiceFunction.Arn
+          NOTIFICATION_SERVICE_FUNCTION_ARN: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${NotificationServiceFunction}
       Events:
         SendChannelMessage:
           Type: Api
