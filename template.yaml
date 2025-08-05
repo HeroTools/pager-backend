@@ -66,7 +66,6 @@ Globals:
       AllowOrigin: "'*'"
       MaxAge: "'3600'"
       AllowMethods: "'OPTIONS,POST,GET,PUT,DELETE,PATCH'"
-      AllowCredentials: "'true'"
     MethodSettings:
       # 1) Global catch‑all throttle
       - ResourcePath: '/*'
@@ -105,12 +104,6 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: !Ref StageName
-      Cors:
-        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-        AllowOrigin: "'*'"
-        MaxAge: "'3600'"
-        AllowMethods: "'OPTIONS,POST,GET,PUT,DELETE,PATCH'"
-        AllowCredentials: "'true'"
 
   # CREATE WORKSPACE
   CreateWorkspaceFunction:
