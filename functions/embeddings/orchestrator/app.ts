@@ -1,11 +1,11 @@
-import { ScheduledHandler } from 'aws-lambda';
 import {
   SQSClient,
   SendMessageBatchCommand,
   SendMessageBatchRequestEntry,
 } from '@aws-sdk/client-sqs';
-import { successResponse, errorResponse } from '../../common/utils/response';
+import { ScheduledHandler } from 'aws-lambda';
 import dbPool from '../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../common/utils/response';
 
 const sqs = new SQSClient({});
 const BATCH_SIZE = parseInt(process.env.BATCH_SIZE || '100');
@@ -68,20 +68,20 @@ async function fetchAndClaimMessages(): Promise<MessageToEmbed[]> {
   const claimTimestamp = new Date();
 
   const query = `
-        UPDATE messages 
+        UPDATE messages
         SET claimed_at = $1
         WHERE id IN (
-            SELECT id 
-            FROM messages 
-            WHERE needs_embedding = true 
+            SELECT id
+            FROM messages
+            WHERE needs_embedding = true
             AND deleted_at IS NULL
             AND (claimed_at IS NULL OR claimed_at < $2)
             ORDER BY created_at ASC, id ASC
             LIMIT $3
             FOR UPDATE SKIP LOCKED
         )
-        RETURNING 
-            id, workspace_id, channel_id, conversation_id, 
+        RETURNING
+            id, workspace_id, channel_id, conversation_id,
             parent_message_id, created_at, body, text
     `;
 
@@ -97,7 +97,8 @@ async function fetchAndClaimMessages(): Promise<MessageToEmbed[]> {
 function groupMessagesByWorkspace(messages: MessageToEmbed[]): WorkspaceBatch[] {
   const map = new Map<string, MessageToEmbed[]>();
   for (const msg of messages) {
-    if (msg.text && /\S/.test(msg.text)) {
+    const content = (msg.text || msg.body || '').trim();
+    if (content && /\S/.test(content)) {
       const arr = map.get(msg.workspace_id) || [];
       arr.push(msg);
       map.set(msg.workspace_id, arr);
