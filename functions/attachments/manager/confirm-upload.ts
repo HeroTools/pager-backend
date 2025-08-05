@@ -1,9 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
-import { supabase } from '../../common/utils/supabase-client';
-import { errorResponse, successResponse } from '../../common/utils/response';
 import { getUserIdFromToken } from '../../common/helpers/auth';
 import { withCors } from '../../common/utils/cors';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import { supabase } from '../../common/utils/supabase-client';
 
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -57,10 +57,16 @@ export const handler = withCors(
         return errorResponse('Failed to finalize file record in database', 500);
       }
 
+      delete updatedFileRecord.public_url;
+      const fileData = {
+        ...updatedFileRecord,
+        storage_url: `${process.env.SUPABASE_URL}/storage/v1/object/${updatedFileRecord.s3_bucket}/${updatedFileRecord.s3_key}`,
+      };
+
       return successResponse(
         {
           message: 'File upload confirmed successfully',
-          file: updatedFileRecord,
+          file: fileData,
         },
         200,
       );

@@ -14,6 +14,10 @@ Parameters:
     Type: String
     Default: dev
     AllowedValues: [dev, prod]
+  DeploymentVersion:
+    Type: String
+    Default: '1.0.0'
+    Description: 'Change this value to force function updates'
 
 Mappings:
   FrontendUrls:
@@ -23,19 +27,20 @@ Mappings:
       url: 'https://www.app.pager.team'
   AllowOrigins:
     dev:
-      origins: http://localhost:3000,https://pager-dev.vercel.app,https://www.app.pager.team
+      origins: http://localhost:3000,https://pager-dev.vercel.app,https://pager-frontend-*.vercel.app
     prod:
       origins: https://www.app.pager.team
 
 Globals:
   Function:
-    Timeout: 180
-    MemorySize: 512
+    Timeout: 30
+    MemorySize: 256
     Runtime: nodejs20.x
     Architectures:
       - arm64
     Environment:
       Variables:
+        DEPLOYMENT_VERSION: !Ref DeploymentVersion
         OPENAI_API_KEY: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/openai-api-key:SecretString}}'
         GOOGLE_CLIENT_ID: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/google-client-id:SecretString}}'
         SUPABASE_URL: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/supabase-url:SecretString}}'
@@ -90,6 +95,10 @@ Globals:
         HttpMethod: 'GET'
         ThrottlingBurstLimit: 1000
         ThrottlingRateLimit: 500
+      - ResourcePath: '/workspaces/{workspaceId}/search/semantic'
+        HttpMethod: 'POST'
+        ThrottlingBurstLimit: 100
+        ThrottlingRateLimit: 50
 
 Resources:
   MainApi:
@@ -230,7 +239,7 @@ Resources:
         EntryPoints:
           - delete/app.ts
 
-  # SEND MESSAGE (UNIVERSAL)
+  # SEND MESSAGE
   SendMessageFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -245,7 +254,7 @@ Resources:
               - lambda:InvokeFunctionUrl
               - lambda:InvokeFunction
               - lambda:InvokeAsync
-            Resource: !Sub arn:aws:lambda:*:${AWS::AccountId}:function:*
+            Resource: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*
       Environment:
         Variables:
           NOTIFICATION_SERVICE_FUNCTION_ARN: !GetAtt NotificationServiceFunction.Arn
@@ -734,6 +743,7 @@ Resources:
       CodeUri: functions/channels
       Handler: delete/message-cleanup.handler
       Timeout: 900 # 15 minutes for large channels
+      MemorySize: 512
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1314,7 +1324,6 @@ Resources:
     Properties:
       CodeUri: functions/auth
       Handler: google-auth/app.handler
-      Tracing: Active
       Events:
         InitiateGoogleAuth:
           Type: Api
@@ -1407,7 +1416,6 @@ Resources:
     Properties:
       QueueName: !Sub ${AWS::StackName}-embedding-dlq
 
-  # 2. EventBridge Rule
   EmbeddingScheduleRule:
     Type: AWS::Events::Rule
     Properties:
@@ -1417,13 +1425,11 @@ Resources:
         - Arn: !GetAtt EmbeddingOrchestratorFunction.Arn
           Id: 'EmbeddingOrchestratorTarget'
 
-  # 3. Lambda Functions
   EmbeddingOrchestratorFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: functions/embeddings
       Handler: orchestrator/app.handler
-      Runtime: nodejs22.x
       Timeout: 60
       MemorySize: 512
       Policies:
@@ -1459,7 +1465,6 @@ Resources:
     Properties:
       CodeUri: functions/embeddings
       Handler: worker/app.handler
-      Runtime: nodejs22.x
       Timeout: 300 # 5 minutes for processing
       MemorySize: 1024 # More memory for vector operations
       Environment:
@@ -1504,7 +1509,6 @@ Resources:
     Properties:
       CodeUri: functions/search
       Handler: service/app.handler
-      Runtime: nodejs22.x
       Timeout: 30
       MemorySize: 512
       Events:
@@ -1536,9 +1540,6 @@ Resources:
     Properties:
       CodeUri: functions/agents
       Handler: get/app.handler
-      Runtime: nodejs22.x
-      Timeout: 30
-      MemorySize: 128
       Events:
         ApiEvent:
           Type: Api
@@ -1559,9 +1560,6 @@ Resources:
     Properties:
       CodeUri: functions/agents
       Handler: update-name/app.handler
-      Runtime: nodejs22.x
-      Timeout: 30
-      MemorySize: 128
       Events:
         ApiEvent:
           Type: Api
@@ -1582,7 +1580,6 @@ Resources:
     Properties:
       CodeUri: functions/agents
       Handler: chat/app.handler # Make sure this exports streamified handler
-      Runtime: nodejs22.x
       Timeout: 300 # Increased for streaming
       MemorySize: 1024
       FunctionUrlConfig:
@@ -1614,9 +1611,6 @@ Resources:
     Properties:
       CodeUri: functions/agents
       Handler: get-conversations/app.handler
-      Runtime: nodejs22.x
-      Timeout: 30
-      MemorySize: 128
       Events:
         ApiEvent:
           Type: Api
@@ -1637,9 +1631,6 @@ Resources:
     Properties:
       CodeUri: functions/agents
       Handler: get-conversation-messages/app.handler
-      Runtime: nodejs22.x
-      Timeout: 30
-      MemorySize: 128
       Events:
         ApiEvent:
           Type: Api
@@ -1660,7 +1651,6 @@ Resources:
     Properties:
       CodeUri: functions/migration
       Handler: from-slack/app.handler
-      Runtime: nodejs22.x
       Timeout: 900
       MemorySize: 1024
       Events:

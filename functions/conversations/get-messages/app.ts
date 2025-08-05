@@ -1,12 +1,12 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
-import dbPool from '../../common/utils/create-db-pool';
 import { getUserIdFromToken } from '../../common/helpers/auth';
-import { successResponse, errorResponse } from '../../common/utils/response';
-import type { ConversationMemberWithUser } from '../types';
 import type { MessageWithUser } from '../../common/types';
 import { withCors } from '../../common/utils/cors';
+import dbPool from '../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import type { ConversationMemberWithUser } from '../types';
 
 const PathParamsSchema = z.object({
   conversationId: z.string().uuid('conversationId is required'),
@@ -140,7 +140,11 @@ export const handler = withCors(
                 jsonb_build_object(
                   'id',               uf.id,
                   'original_filename',uf.original_filename,
-                  'public_url',       uf.public_url,
+                  'storage_url',      CONCAT(
+                    $9::text,
+                    '/storage/v1/object/files/',
+                    uf.s3_key
+                  ),
                   'content_type',     uf.content_type,
                   'size_bytes',       uf.size_bytes,
                   'order_index',      ma.order_index
@@ -251,6 +255,7 @@ export const handler = withCors(
         limit, // $6
         include_reactions, // $7
         include_attachments, // $8
+        process.env.SUPABASE_URL, // $9
       ]);
 
       if (rows.length === 0) {
