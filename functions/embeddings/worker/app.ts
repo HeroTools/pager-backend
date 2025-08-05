@@ -61,29 +61,61 @@ interface ThreadContext {
   threadSummary: string;
 }
 
+interface ProcessingResult {
+  messageId: string;
+  status: 'success' | 'failed' | 'skipped';
+  tokenCount?: number;
+  error?: string;
+}
+
 export const handler: SQSHandler = async (event: SQSEvent) => {
   console.log(`🛎️ Received ${event.Records.length} SQS messages`);
 
   const messages = event.Records.map((r) => JSON.parse(r.body) as SQSMessageBody);
 
-  const threadContextMap = await buildThreadContextMap(messages);
+  const { validMessages, invalidMessageIds } = validateMessages(messages);
 
-  const enrichedInputs = messages.map((msg) => {
+  if (invalidMessageIds.length > 0) {
+    await markMessagesAsNotNeedingEmbedding(invalidMessageIds);
+    console.log(`Marked ${invalidMessageIds.length} invalid messages as not needing embedding`);
+  }
+
+  if (validMessages.length === 0) {
+    console.log('No valid messages to process');
+    return successResponse({ message: 'No valid messages to process' }, 200);
+  }
+
+  let threadContextMap: Map<string, ThreadContext>;
+  try {
+    threadContextMap = await buildThreadContextMap(validMessages);
+  } catch (error) {
+    console.error('Failed to build thread context map:', error);
+    threadContextMap = new Map();
+  }
+
+  const enrichedInputs = validMessages.map((msg) => {
     const content = (msg.text || msg.body).trim();
     const threadContext = threadContextMap.get(msg.parentMessageId || msg.messageId);
     const enrichedContent = enrichContentWithThreadContext(content, threadContext);
     return truncateToTokenLimit(enrichedContent, MODEL_MAX_TOKENS);
   });
 
-  const embedResponse = await openai.embeddings.create({
-    model: EMBEDDING_MODEL,
-    input: enrichedInputs,
-    encoding_format: 'float',
-    dimensions: 1536,
-  });
+  let embedResponse: any;
+  try {
+    embedResponse = await openai.embeddings.create({
+      model: EMBEDDING_MODEL,
+      input: enrichedInputs,
+      encoding_format: 'float',
+      dimensions: 1536,
+    });
+  } catch (error) {
+    console.error('Failed to create embeddings:', error);
+    await markMessagesAsNotNeedingEmbedding(validMessages.map((m) => m.messageId));
+    throw new Error(`Embedding generation failed: ${error.message}`);
+  }
 
   const results = await Promise.allSettled(
-    messages.map((msg, i) =>
+    validMessages.map((msg, i) =>
       processOne(
         msg,
         embedResponse.data[i].embedding,
@@ -92,28 +124,121 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
     ),
   );
 
-  const failed = results.filter((r) => r.status === 'rejected');
-  if (failed.length) {
-    const errs = failed.map((r: any) => r.reason.message).join('; ');
-    console.error(`❌ ${failed.length} messages failed:`, errs);
-    throw new Error(`${failed.length} message(s) failed`);
+  const processedResults: ProcessingResult[] = results.map((result, i) => {
+    if (result.status === 'fulfilled') {
+      return {
+        messageId: validMessages[i].messageId,
+        status: 'success',
+        tokenCount: result.value.tokenCount,
+      };
+    } else {
+      console.error(`Message ${validMessages[i].messageId} failed:`, result.reason);
+      return {
+        messageId: validMessages[i].messageId,
+        status: 'failed',
+        error: result.reason.message,
+      };
+    }
+  });
+
+  const successful = processedResults.filter((r) => r.status === 'success');
+  const failed = processedResults.filter((r) => r.status === 'failed');
+
+  if (successful.length > 0) {
+    const successfulMessageIds = successful.map((r) => r.messageId);
+    const totalTokens = successful.reduce((sum, r) => sum + (r.tokenCount || 0), 0);
+    const workspaceId = validMessages[0].workspaceId;
+
+    await Promise.allSettled([
+      batchUpdateMessagesProcessed(successfulMessageIds),
+      updateWorkspaceUsage(workspaceId, successful.length, totalTokens),
+    ]);
   }
 
-  const successfulResults = results.filter(
-    (r) => r.status === 'fulfilled',
-  ) as PromiseFulfilledResult<any>[];
-  const processedMessageIds = successfulResults.map((r) => r.value.messageId);
-  const totalTokens = successfulResults.reduce((sum, r) => sum + r.value.tokenCount, 0);
-  const workspaceId = messages[0].workspaceId;
+  if (failed.length > 0) {
+    const criticalFailures = failed.filter(
+      (f) =>
+        f.error?.includes('Invalid embedding data') ||
+        f.error?.includes('Content too long') ||
+        f.error?.includes('Invalid content format'),
+    );
 
-  await Promise.allSettled([
-    batchUpdateMessagesProcessed(processedMessageIds),
-    updateWorkspaceUsage(workspaceId, successfulResults.length, totalTokens),
-  ]);
+    if (criticalFailures.length > 0) {
+      const criticalMessageIds = criticalFailures.map((f) => f.messageId);
+      await markMessagesAsNotNeedingEmbedding(criticalMessageIds);
+      console.log(
+        `Marked ${criticalMessageIds.length} messages with critical failures as not needing embedding`,
+      );
+    }
+  }
 
-  console.log(`✅ Successfully processed ${messages.length} messages`);
-  return successResponse({ message: 'Successfully processed messages' }, 200);
+  console.log(
+    `✅ Processing complete - Success: ${successful.length}, Failed: ${failed.length}, Invalid: ${invalidMessageIds.length}`,
+  );
+
+  if (failed.length > 0 && successful.length === 0) {
+    throw new Error(`All ${failed.length} messages failed processing`);
+  }
+
+  return successResponse(
+    {
+      message: 'Processing completed',
+      data: {
+        successful: successful.length,
+        failed: failed.length,
+        invalid: invalidMessageIds.length,
+      },
+    },
+    200,
+  );
 };
+
+function validateMessages(messages: SQSMessageBody[]): {
+  validMessages: SQSMessageBody[];
+  invalidMessageIds: string[];
+} {
+  const validMessages: SQSMessageBody[] = [];
+  const invalidMessageIds: string[] = [];
+
+  for (const msg of messages) {
+    const content = (msg.text || msg.body || '').trim();
+
+    if (!content || !/\S/.test(content)) {
+      console.log(`Message ${msg.messageId} has no content`);
+      invalidMessageIds.push(msg.messageId);
+      continue;
+    }
+
+    if (content.length > 100000) {
+      console.log(`Message ${msg.messageId} is too long: ${content.length} characters`);
+      invalidMessageIds.push(msg.messageId);
+      continue;
+    }
+
+    if (!msg.workspaceId || !msg.messageId) {
+      console.log(`Message ${msg.messageId} missing required fields`);
+      invalidMessageIds.push(msg.messageId);
+      continue;
+    }
+
+    validMessages.push(msg);
+  }
+
+  return { validMessages, invalidMessageIds };
+}
+
+async function markMessagesAsNotNeedingEmbedding(messageIds: string[]): Promise<void> {
+  if (messageIds.length === 0) return;
+
+  const { error } = await supabase
+    .from('messages')
+    .update({ needs_embedding: false, claimed_at: null })
+    .in('id', messageIds);
+
+  if (error) {
+    console.error('Failed to mark messages as not needing embedding:', error);
+  }
+}
 
 async function buildThreadContextMap(
   messages: SQSMessageBody[],
@@ -121,12 +246,10 @@ async function buildThreadContextMap(
   const contextMap = new Map<string, ThreadContext>();
   const currentBatchMessageIds = new Set(messages.map((m) => m.messageId));
 
-  // 1. Identify all unique parent message IDs in the batch.
   const uniqueParentIdsInBatch = [
     ...new Set(messages.filter((m) => m.parentMessageId).map((m) => m.parentMessageId!)),
   ];
 
-  // 2. Separate parent IDs that are in the current batch from those that need to be fetched.
   const parentIdsToFetch = uniqueParentIdsInBatch.filter((id) => !currentBatchMessageIds.has(id));
 
   let fetchedParentMessages: MessageDetail[] = [];
@@ -137,13 +260,11 @@ async function buildThreadContextMap(
       .in('id', parentIdsToFetch);
     if (error) {
       console.error('Failed to fetch parent messages:', error.message);
-      // Decide how to handle this error - maybe throw, or just continue without this context.
     } else {
       fetchedParentMessages = data || [];
     }
   }
 
-  // 3. Fetch all thread messages for all relevant threads in a single query.
   let allFetchedThreadMessages: MessageDetail[] = [];
   if (uniqueParentIdsInBatch.length > 0) {
     const { data, error } = await supabase
@@ -158,7 +279,6 @@ async function buildThreadContextMap(
     }
   }
 
-  // 4. Map all fetched data for easy lookup.
   const allMessagesMap = new Map<string, MessageDetail>();
   messages.forEach((msg) =>
     allMessagesMap.set(msg.messageId, {
@@ -172,21 +292,24 @@ async function buildThreadContextMap(
   fetchedParentMessages.forEach((msg) => allMessagesMap.set(msg.id, msg));
   allFetchedThreadMessages.forEach((msg) => allMessagesMap.set(msg.id, msg));
 
-  // 5. Build the context map for each thread.
   for (const parentId of uniqueParentIdsInBatch) {
     const parentMessage = allMessagesMap.get(parentId);
 
-    // Filter messages belonging to the current thread from the comprehensive list.
     const allThreadMessages = Array.from(allMessagesMap.values()).filter(
       (m) => m.parent_message_id === parentId,
     );
 
-    // Ensure messages are sorted correctly by time.
     allThreadMessages.sort(
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     );
 
-    const threadSummary = await createThreadSummary(parentMessage, allThreadMessages);
+    let threadSummary = '';
+    try {
+      threadSummary = await createThreadSummary(parentMessage, allThreadMessages);
+    } catch (error) {
+      console.error(`Failed to create thread summary for ${parentId}:`, error);
+      threadSummary = '';
+    }
 
     contextMap.set(parentId, {
       parentMessage,
@@ -258,6 +381,10 @@ function enrichContentWithThreadContext(content: string, threadContext?: ThreadC
 
 async function processOne(msg: SQSMessageBody, embedding: number[], threadContext?: ThreadContext) {
   const { messageId, workspaceId, channelId, conversationId, createdAt, parentMessageId } = msg;
+
+  if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
+    throw new Error('Invalid embedding data');
+  }
 
   const { data: ctxRows, error: ctxErr } = await supabase.rpc('find_semantic_neighbors', {
     p_embedding: embedding,

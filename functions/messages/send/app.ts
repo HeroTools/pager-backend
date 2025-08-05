@@ -35,7 +35,7 @@ const PathParamsSchema = z
     message: 'Either channelId or conversationId is required',
   });
 
-const lambdaClient = new LambdaClient({ region: 'us-east-2' });
+const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-east-2' });
 
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -101,6 +101,7 @@ export const handler = withCors(
 
       let accessQuery: string;
       let accessParams: any[];
+      let conversationMembers: any[] = [];
 
       if (channelId) {
         accessQuery = `
@@ -114,19 +115,32 @@ export const handler = withCors(
         accessParams = [channelId, workspaceMember.id];
       } else if (conversationId) {
         accessQuery = `
-              SELECT 1 FROM conversation_members cm
-              WHERE cm.conversation_id = $1 AND cm.workspace_member_id = $2 AND cm.left_at IS NULL
+              SELECT workspace_member_id
+              FROM conversation_members cm
+              WHERE cm.conversation_id = $1 AND cm.left_at IS NULL
           `;
-        accessParams = [conversationId, workspaceMember.id];
+        accessParams = [conversationId];
       } else {
         await client.query('ROLLBACK');
         return errorResponse('Either channel ID or conversation ID is required', 400);
       }
 
       const { rows: accessRows } = await client.query(accessQuery, accessParams);
-      if (accessRows.length === 0) {
-        await client.query('ROLLBACK');
-        return errorResponse('Access denied', 403);
+
+      if (conversationId) {
+        conversationMembers = accessRows;
+        const hasAccess = conversationMembers.some(
+          (member) => member.workspace_member_id === workspaceMember.id,
+        );
+        if (!hasAccess) {
+          await client.query('ROLLBACK');
+          return errorResponse('Access denied', 403);
+        }
+      } else {
+        if (accessRows.length === 0) {
+          await client.query('ROLLBACK');
+          return errorResponse('Access denied', 403);
+        }
       }
 
       if (attachment_ids.length > 0) {
@@ -238,10 +252,14 @@ export const handler = withCors(
                       json_build_object(
                           'id', uf.id,
                           'original_filename', uf.original_filename,
-                          'public_url', uf.public_url,
                           'content_type', uf.content_type,
                           'size_bytes', uf.size_bytes,
-                          'order_index', ma.order_index
+                          'order_index', ma.order_index,
+                          'storage_url', CONCAT(
+                            $2::text,
+                            '/storage/v1/object/files/',
+                            uf.s3_key
+                          )
                       ) ORDER BY ma.order_index
                   ) FILTER (WHERE uf.id IS NOT NULL),
                   '[]'::json
@@ -258,7 +276,10 @@ export const handler = withCors(
                    u.id, u.name, u.email, u.image
       `;
 
-      const { rows: completeRows } = await client.query(completeMessageQuery, [messageId]);
+      const { rows: completeRows } = await client.query(completeMessageQuery, [
+        messageId,
+        process.env.SUPABASE_URL,
+      ]);
 
       if (completeRows.length === 0) {
         await client.query('ROLLBACK');
@@ -308,20 +329,25 @@ export const handler = withCors(
 
       console.log('notificationPayload:', notificationPayload);
 
-      await Promise.all([
-        broadcastMessage(transformedMessage, channelId, conversationId),
-        invokeLambdaFunction(
-          process.env.NOTIFICATION_SERVICE_FUNCTION_ARN as string,
-          notificationPayload,
-          lambdaClient,
-        ),
-      ]);
+      let isSelfConversation = false;
+      if (conversationId) {
+        isSelfConversation =
+          conversationMembers.length === 1 &&
+          conversationMembers[0].workspace_member_id === workspaceMember.id;
+      }
 
-      console.log(
-        `Message sent with ${attachment_ids.length} attachments to ${
-          channelId ? 'channel' : 'conversation'
-        }`,
-      );
+      if (!isSelfConversation) {
+        await Promise.all([
+          broadcastMessage(transformedMessage, channelId, conversationId),
+          invokeLambdaFunction(
+            process.env.NOTIFICATION_SERVICE_FUNCTION_ARN as string,
+            notificationPayload,
+            lambdaClient,
+          ),
+        ]);
+      } else {
+        console.log('Self-conversation detected, skipping broadcast and notifications');
+      }
 
       return successResponse(transformedMessage, 201);
     } catch (error) {

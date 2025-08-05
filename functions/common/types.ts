@@ -21,9 +21,9 @@ export interface MessageWithUser {
   };
   attachment?: {
     id: string;
-    url: string;
     content_type: string | null;
     size_bytes: number | null;
+    storage_url: string;
   };
   reactions?: Array<{
     id: string;

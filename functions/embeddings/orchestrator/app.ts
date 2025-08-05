@@ -1,11 +1,11 @@
-import { ScheduledHandler } from 'aws-lambda';
 import {
   SQSClient,
   SendMessageBatchCommand,
   SendMessageBatchRequestEntry,
 } from '@aws-sdk/client-sqs';
-import { successResponse, errorResponse } from '../../common/utils/response';
+import { ScheduledHandler } from 'aws-lambda';
 import dbPool from '../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../common/utils/response';
 
 const sqs = new SQSClient({});
 const BATCH_SIZE = parseInt(process.env.BATCH_SIZE || '100');
@@ -40,18 +40,43 @@ export const handler: ScheduledHandler = async (event, context) => {
     }
 
     console.log(`Claimed ${messages.length} messages for embedding`);
-    const workspaceBatches = groupMessagesByWorkspace(messages);
+
+    const { validMessages, invalidMessageIds } = filterAndValidateMessages(messages);
+
+    if (invalidMessageIds.length > 0) {
+      await markMessagesAsNotNeedingEmbedding(invalidMessageIds);
+      console.log(`Marked ${invalidMessageIds.length} invalid messages as not needing embedding`);
+    }
+
+    if (validMessages.length === 0) {
+      console.log('No valid messages to embed after filtering');
+      return successResponse({
+        message: 'No valid messages to embed',
+        data: {
+          processedCount: messages.length,
+          invalidCount: invalidMessageIds.length,
+          validCount: 0,
+        },
+      });
+    }
+
+    const workspaceBatches = groupMessagesByWorkspace(validMessages);
     const { batchCount, failures } = await sendToSQS(workspaceBatches);
 
     console.log('Orchestration complete', {
       total: messages.length,
+      valid: validMessages.length,
+      invalid: invalidMessageIds.length,
       batches: batchCount,
       failures,
     });
+
     return successResponse({
       message: 'Embedding orchestrator completed',
       data: {
         processedCount: messages.length,
+        validCount: validMessages.length,
+        invalidCount: invalidMessageIds.length,
         workspaceCount: workspaceBatches.length,
         sqsBatches: batchCount,
         failures,
@@ -63,25 +88,71 @@ export const handler: ScheduledHandler = async (event, context) => {
   }
 };
 
+function filterAndValidateMessages(messages: MessageToEmbed[]): {
+  validMessages: MessageToEmbed[];
+  invalidMessageIds: string[];
+} {
+  const validMessages: MessageToEmbed[] = [];
+  const invalidMessageIds: string[] = [];
+
+  for (const msg of messages) {
+    const content = (msg.text || msg.body || '').trim();
+
+    if (!content || !/\S/.test(content)) {
+      console.log(`Message ${msg.id} has no content, marking as not needing embedding`);
+      invalidMessageIds.push(msg.id);
+      continue;
+    }
+
+    if (content.length > 100000) {
+      console.log(
+        `Message ${msg.id} is too long (${content.length} chars), marking as not needing embedding`,
+      );
+      invalidMessageIds.push(msg.id);
+      continue;
+    }
+
+    validMessages.push(msg);
+  }
+
+  return { validMessages, invalidMessageIds };
+}
+
+async function markMessagesAsNotNeedingEmbedding(messageIds: string[]): Promise<void> {
+  if (messageIds.length === 0) return;
+
+  const client = await dbPool.connect();
+  try {
+    const query = `
+      UPDATE messages
+      SET needs_embedding = false, claimed_at = null
+      WHERE id = ANY($1)
+    `;
+    await client.query(query, [messageIds]);
+  } finally {
+    client.release();
+  }
+}
+
 async function fetchAndClaimMessages(): Promise<MessageToEmbed[]> {
   const staleThreshold = new Date(Date.now() - 10 * 60 * 1000);
   const claimTimestamp = new Date();
 
   const query = `
-        UPDATE messages 
+        UPDATE messages
         SET claimed_at = $1
         WHERE id IN (
-            SELECT id 
-            FROM messages 
-            WHERE needs_embedding = true 
+            SELECT id
+            FROM messages
+            WHERE needs_embedding = true
             AND deleted_at IS NULL
             AND (claimed_at IS NULL OR claimed_at < $2)
             ORDER BY created_at ASC, id ASC
             LIMIT $3
             FOR UPDATE SKIP LOCKED
         )
-        RETURNING 
-            id, workspace_id, channel_id, conversation_id, 
+        RETURNING
+            id, workspace_id, channel_id, conversation_id,
             parent_message_id, created_at, body, text
     `;
 
@@ -96,13 +167,13 @@ async function fetchAndClaimMessages(): Promise<MessageToEmbed[]> {
 
 function groupMessagesByWorkspace(messages: MessageToEmbed[]): WorkspaceBatch[] {
   const map = new Map<string, MessageToEmbed[]>();
+
   for (const msg of messages) {
-    if (msg.text && /\S/.test(msg.text)) {
-      const arr = map.get(msg.workspace_id) || [];
-      arr.push(msg);
-      map.set(msg.workspace_id, arr);
-    }
+    const arr = map.get(msg.workspace_id) || [];
+    arr.push(msg);
+    map.set(msg.workspace_id, arr);
   }
+
   return Array.from(map, ([workspace_id, msgs]) => ({ workspace_id, messages: msgs })).sort(
     (a, b) => a.messages.length - b.messages.length,
   );

@@ -503,10 +503,11 @@ class ResilientSlackMigrator {
     const timestamp = new Date(parseFloat(slackMessage.ts) * 1000).toISOString();
 
     const { rows } = await this.client.query(
-      `INSERT INTO messages (body, workspace_member_id, workspace_id, conversation_id, parent_message_id, sender_type, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'user', $6, $6)
+      `INSERT INTO messages (body, text, workspace_member_id, workspace_id, conversation_id, parent_message_id, sender_type, needs_embedding, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'user', true, $7, $7)
        RETURNING id`,
       [
+        slackMessage.text,
         slackMessage.text,
         workspaceMembers[0].id,
         this.workspaceId,
@@ -586,10 +587,11 @@ class ResilientSlackMigrator {
     const timestamp = new Date(parseFloat(slackMessage.ts) * 1000).toISOString();
 
     const { rows } = await this.client.query(
-      `INSERT INTO messages (body, workspace_member_id, workspace_id, channel_id, parent_message_id, sender_type, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'user', $6, $6)
-       RETURNING id`,
+      `INSERT INTO messages (body, text, workspace_member_id, workspace_id, channel_id, parent_message_id, sender_type, needs_embedding, created_at, updated_at)
+   VALUES ($1, $2, $3, $4, $5, $6, 'user', true, $7, $7)
+   RETURNING id`,
       [
+        slackMessage.text,
         slackMessage.text,
         workspaceMembers[0].id,
         this.workspaceId,
