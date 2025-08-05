@@ -1,12 +1,12 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
-import dbPool from '../../common/utils/create-db-pool';
 import { getUserIdFromToken } from '../../common/helpers/auth';
-import { successResponse, errorResponse } from '../../common/utils/response';
-import type { ChannelMemberWithUser } from '../types';
 import type { MessageWithUser } from '../../common/types';
 import { withCors } from '../../common/utils/cors';
+import dbPool from '../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import type { ChannelMemberWithUser } from '../types';
 
 // Validation schemas
 const PathParamsSchema = z.object({
@@ -147,10 +147,14 @@ export const handler = withCors(
                 jsonb_build_object(
                   'id', uf.id,
                   'original_filename', uf.original_filename,
-                  'public_url', uf.public_url,
                   'content_type', uf.content_type,
                   'size_bytes', uf.size_bytes,
-                  'order_index', ma.order_index
+                  'order_index', ma.order_index,
+                  'storage_url', CONCAT(
+                    $9::text,
+                    '/storage/v1/object/files/',
+                    uf.s3_key
+                  )
                 ) ORDER BY ma.order_index
               ) FILTER (WHERE uf.id IS NOT NULL),
               '[]'::json
@@ -258,6 +262,7 @@ export const handler = withCors(
         limit, // $6
         include_reactions, // $7
         include_attachments, // $8
+        process.env.SUPABASE_URL, // $9
       ]);
 
       if (rows.length === 0) {

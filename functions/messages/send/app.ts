@@ -35,7 +35,7 @@ const PathParamsSchema = z
     message: 'Either channelId or conversationId is required',
   });
 
-const lambdaClient = new LambdaClient({ region: 'us-east-2' });
+const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-east-2' });
 
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
