@@ -248,7 +248,7 @@ Resources:
             Resource: !Sub arn:aws:lambda:*:${AWS::AccountId}:function:*
       Environment:
         Variables:
-          NOTIFICATION_SERVICE_FUNCTION_ARN: unowned-dev-NotificationServiceFunction-R3nf7dOf9FUt
+          NOTIFICATION_SERVICE_FUNCTION_ARN: !GetAtt NotificationServiceFunction.Arn
       Events:
         SendChannelMessage:
           Type: Api
