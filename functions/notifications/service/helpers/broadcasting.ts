@@ -5,7 +5,10 @@ export const broadcastNotification = async (notification: CreatedNotification) =
   try {
     const realtimeChannel = `workspace_member:${notification.workspace_member_id}`;
 
-    await supabase.channel(realtimeChannel).send({
+    const channel = supabase.channel(realtimeChannel, {
+      config: { broadcast: { self: false } },
+    });
+    await channel.send({
       type: 'broadcast',
       event: 'new_notification',
       payload: {
