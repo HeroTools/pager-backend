@@ -2,10 +2,10 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
 import { getUserIdFromToken } from '../../common/helpers/auth';
 import { getMember } from '../../common/helpers/get-member';
+import { withCors } from '../../common/utils/cors';
 import { errorResponse, successResponse } from '../../common/utils/response';
 import { supabase } from '../../common/utils/supabase-client';
 import sanitizeFilename from './helpers/sanitize-file-name';
-import { withCors } from '../../common/utils/cors';
 
 const ALLOWED_FILE_PURPOSES = [
   'attachments',
@@ -102,9 +102,6 @@ export const handler = withCors(
       const s3BucketName = 'files';
       const s3Key = `${workspaceId}/${filePurpose}/${fileId}/${sanitizedFilename}`;
 
-      // Generate public URL first
-      const { data: publicUrlData } = supabase.storage.from(s3BucketName).getPublicUrl(s3Key);
-
       // Insert file record with public URL
       const { error: dbError } = await supabase.from('uploaded_files').insert({
         id: fileId,
@@ -117,7 +114,6 @@ export const handler = withCors(
         uploaded_by: userId,
         status: 'uploading',
         file_purpose: filePurpose,
-        public_url: publicUrlData.publicUrl,
       });
 
       if (dbError) {
@@ -142,7 +138,7 @@ export const handler = withCors(
         signed_url: presignedData.signedUrl,
         token: presignedData.token,
         path: s3Key,
-        public_url: publicUrlData.publicUrl,
+        storage_url: `${process.env.SUPABASE_URL}/storage/v1/object/${s3BucketName}/${s3Key}`,
         file_id: fileId,
         expires_in: 3600,
       });
