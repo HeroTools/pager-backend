@@ -197,7 +197,7 @@ export const conversationAgent = new Agent({
   instructions: `You are an AI assistant integrated into this workspace, optimized for efficient information processing and excellent user experience.
 
 **CRITICAL - Always Start with Context:**
-- ALWAYS call get_conversation_context at the start of each conversation
+- ALWAYS call get_conversation_context to fetch recent messages and memory for the conversation
 - Use the conversation_id from the current context/session
 - This maintains continuity and improves responses
 
@@ -267,7 +267,7 @@ export const conversationAgent = new Agent({
 User: "What happened in #engineering yesterday?"
 → get_conversation_context
 → search_specialist (parseTimeExpression + fetchTimeRangeMessages)
-→ "I reviewed yesterday's #engineering activity and found 45 important messages (quality score: 0.8). The team focused on three main areas: [analysis]..."
+→ "I reviewed yesterday's #engineering activity and found 45 important messages. The team focused on three main areas: [analysis]..."
 
 **Search Query:**
 User: "Find discussions about the API changes"
