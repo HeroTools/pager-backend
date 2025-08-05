@@ -1400,16 +1400,16 @@ Resources:
         EntryPoints:
           - delete-attachment.ts
 
-  # 1. SQS Queue for message processing
   EmbeddingQueue:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub ${AWS::StackName}-embedding-queue
-      VisibilityTimeout: 300 # 5 minutes (match Lambda timeout)
-      MessageRetentionPeriod: 1209600 # 14 days
+      VisibilityTimeout: 300
+      MessageRetentionPeriod: 1209600
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt EmbeddingDLQ.Arn
-        maxReceiveCount: 3
+        maxReceiveCount: 2
+      ReceiveMessageWaitTimeSeconds: 20
 
   EmbeddingDLQ:
     Type: AWS::SQS::Queue
@@ -1419,7 +1419,7 @@ Resources:
   EmbeddingScheduleRule:
     Type: AWS::Events::Rule
     Properties:
-      ScheduleExpression: 'rate(5 minutes)'
+      ScheduleExpression: 'rate(2 minutes)'
       State: ENABLED
       Targets:
         - Arn: !GetAtt EmbeddingOrchestratorFunction.Arn
@@ -1450,7 +1450,7 @@ Resources:
       Environment:
         Variables:
           SQS_QUEUE_URL: !Ref EmbeddingQueue
-          BATCH_SIZE: 100
+          BATCH_SIZE: 500
           MAX_MESSAGES_PER_RUN: 1000
     Metadata:
       BuildMethod: esbuild
@@ -1472,7 +1472,7 @@ Resources:
           EMBEDDING_MODEL: 'text-embedding-3-small'
           SIMILARITY_THRESHOLD: '0.7'
           CONTEXT_TIME_WINDOW_HOURS: '48'
-          BATCH_SIZE: '100'
+          BATCH_SIZE: '500'
           MODEL_MAX_TOKENS: '8191'
       Policies:
         - AWSLambdaBasicExecutionRole
@@ -1494,8 +1494,8 @@ Resources:
           Type: SQS
           Properties:
             Queue: !GetAtt EmbeddingQueue.Arn
-            BatchSize: 25 # Process 25 messages at a time
-            MaximumBatchingWindowInSeconds: 20
+            BatchSize: 50
+            MaximumBatchingWindowInSeconds: 10
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
