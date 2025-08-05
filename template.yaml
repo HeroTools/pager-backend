@@ -24,12 +24,12 @@ Mappings:
     dev:
       url: 'http://localhost:3000'
     prod:
-      url: 'https://www.app.pager.team'
+      url: 'https://app.pager.team'
   AllowOrigins:
     dev:
       origins: http://localhost:3000,https://pager-dev.vercel.app,https://pager-frontend-*.vercel.app
     prod:
-      origins: https://www.app.pager.team
+      origins: https://app.pager.team
 
 Globals:
   Function:
