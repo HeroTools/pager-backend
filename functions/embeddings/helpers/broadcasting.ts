@@ -1,6 +1,5 @@
 import { supabase } from '../../common/utils/supabase-client';
 
-// Real-time broadcast helper
 export const broadcastMessage = async (
   message: any,
   channelId?: string,
@@ -27,26 +26,4 @@ export const broadcastMessage = async (
     console.error('Failed to broadcast message:', error);
     // Don't fail the whole request if broadcast fails
   }
-};
-
-// Send typing notifications
-export const broadcastTypingStatus = async (
-  userId: string,
-  channelId?: string,
-  conversationId?: string,
-  isTyping = false,
-) => {
-  const realtimeChannel = channelId ? `channel:${channelId}` : `conversation:${conversationId}`;
-
-  await supabase.channel(realtimeChannel).send({
-    type: 'broadcast',
-    event: 'typing_status',
-    payload: {
-      user_id: userId,
-      is_typing: isTyping,
-      channel_id: channelId,
-      conversation_id: conversationId,
-      timestamp: new Date().toISOString(),
-    },
-  });
 };

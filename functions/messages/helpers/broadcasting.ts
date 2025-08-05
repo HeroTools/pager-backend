@@ -29,28 +29,6 @@ export const broadcastMessage = async (
   }
 };
 
-// Send typing notifications
-export const broadcastTypingStatus = async (
-  userId: string,
-  channelId?: string,
-  conversationId?: string,
-  isTyping = false,
-) => {
-  const realtimeChannel = channelId ? `channel:${channelId}` : `conversation:${conversationId}`;
-
-  await supabase.channel(realtimeChannel).send({
-    type: 'broadcast',
-    event: 'typing_status',
-    payload: {
-      user_id: userId,
-      is_typing: isTyping,
-      channel_id: channelId,
-      conversation_id: conversationId,
-      timestamp: new Date().toISOString(),
-    },
-  });
-};
-
 export const broadcastMessageUpdate = async (
   message: any,
   workspaceId: string,
