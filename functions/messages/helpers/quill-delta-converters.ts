@@ -71,7 +71,6 @@ const defaultConverters: Converters = {
       this.open = '\n---\n' + this.open;
     },
     mention(this: Node, data: { id: string; name: string; userId: string }) {
-      // Convert mention to the <@id> format for storage
       this.append(`<@${data.id}>`);
     },
   },
