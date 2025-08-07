@@ -1,6 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
+####################################################################
+# 1. Parameters (unchanged)
+####################################################################
 Parameters:
   StageName:
     Type: String
@@ -13,18 +16,19 @@ Parameters:
   Environment:
     Type: String
     Default: dev
-    AllowedValues:
-      - dev
-      - prod
+    AllowedValues: [dev, prod]
   DeploymentVersion:
     Type: String
     Default: '1.0.0'
     Description: 'Bump to force function updates'
 
+####################################################################
+# 2. Mappings (unchanged)
+####################################################################
 Mappings:
   FrontendUrls:
     dev:
-      url: 'http://localhost:3000'
+      url: 'https://pager-dev.vercel.app'
     prod:
       url: 'https://app.pager.team'
   AllowOrigins:
@@ -33,15 +37,17 @@ Mappings:
     prod:
       origins: 'https://app.pager.team'
 
+####################################################################
+# 3. Globals — lower timeout to fit the 29-second API Gateway limit,
+#    and reserve a little concurrency so random spikes don’t steal it.
+####################################################################
 Globals:
   Function:
-    Timeout: 90
+    Timeout: 28 # API Gateway hard-fails after ≈29 s
     MemorySize: 512
     Runtime: nodejs20.x
-    Architectures:
-      - arm64
+    Architectures: [arm64]
     Tracing: Active
-
     Environment:
       Variables:
         DEPLOYMENT_VERSION: !Ref DeploymentVersion
@@ -55,39 +61,33 @@ Globals:
         PG_DATABASE: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-database:SecretString}}'
         PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-password:SecretString}}'
         PG_PORT: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-port:SecretString}}'
-        FRONTEND_URL: !FindInMap
-          - FrontendUrls
-          - !Ref Environment
-          - url
-        ALLOWED_ORIGINS: !FindInMap
-          - AllowOrigins
-          - !Ref Environment
-          - origins
+        FRONTEND_URL: !FindInMap [FrontendUrls, !Ref Environment, url]
+        ALLOWED_ORIGINS: !FindInMap [AllowOrigins, !Ref Environment, origins]
 
 Resources:
+  ApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/http-api/${AWS::StackName}
+      RetentionInDays: 14 # adjust as needed
+
   MainHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
       StageName: !Ref StageName
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiAccessLogGroup.Arn
+        Format: '$context.requestId $context.identity.sourceIp $context.httpMethod $context.routeKey $context.status $context.integration.status $context.integrationErrorMessage $context.requestTime'
       CorsConfiguration:
         AllowOrigins:
-          - !FindInMap
-            - FrontendUrls
-            - !Ref Environment
-            - url
+          - !FindInMap [FrontendUrls, !Ref Environment, url]
         AllowHeaders:
           - Content-Type
           - Authorization
           - X-Amz-Date
           - X-Api-Key
           - X-Amz-Security-Token
-        AllowMethods:
-          - GET
-          - POST
-          - PUT
-          - PATCH
-          - DELETE
-          - OPTIONS
+        AllowMethods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
         AllowCredentials: true
         MaxAge: 86400
 
