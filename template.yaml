@@ -51,6 +51,10 @@ Globals:
         PG_DATABASE: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-database:SecretString}}'
         PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-password:SecretString}}'
         PG_PORT: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-port:SecretString}}'
+        APNS_KEY_ID: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/apns-key-id:SecretString}}'
+        APNS_TEAM_ID: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/apns-team-id:SecretString}}'
+        APNS_KEY_PATH: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/apns-key-path:SecretString}}'
+        APNS_PRODUCTION: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/apns-production:SecretString}}'
         FRONTEND_URL: !FindInMap
           - FrontendUrls
           - !Ref Environment
@@ -503,6 +507,27 @@ Resources:
         Target: es2024
         EntryPoints:
           - get/app.ts
+
+  # REGISTER DEVICE FOR PUSH NOTIFICATIONS
+  RegisterDeviceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/devices
+      Handler: register/app.handler
+      Events:
+        RegisterDevice:
+          Type: Api
+          Properties:
+            Path: /devices/register
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - register/app.ts
 
   # GET ALL AVAILABLE CHANNELS
   GetAllAvailableChannelsFunction:

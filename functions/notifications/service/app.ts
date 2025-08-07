@@ -12,6 +12,7 @@ import {
 } from './helpers/notification-builders';
 import { insertNotifications } from './helpers/notification-database';
 import { NotificationEvent, Notification } from '../types';
+import { sendPushNotificationForNotification } from './send-push-notifications';
 
 async function processMessageNotifications(event: NotificationEvent): Promise<void> {
   let client: PoolClient | null = null;
@@ -104,10 +105,13 @@ async function processMessageNotifications(event: NotificationEvent): Promise<vo
       const createdNotifications = await insertNotifications(client, notifications);
       console.log(`Created ${notifications.length} notifications for message ${messageId}`);
 
-      // 6. Broadcast notifications in real-time
-      await Promise.allSettled(
-        createdNotifications.map((notification) => broadcastNotification(notification)),
-      );
+      // 6. Broadcast notifications in real-time and send push notifications
+      await Promise.allSettled([
+        ...createdNotifications.map((notification) => broadcastNotification(notification)),
+        ...createdNotifications.map((notification) => 
+          sendPushNotificationForNotification(client, notification, workspaceId)
+        ),
+      ]);
     }
   } catch (error) {
     console.error('Error processing notifications:', error);
