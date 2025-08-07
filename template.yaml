@@ -13,11 +13,13 @@ Parameters:
   Environment:
     Type: String
     Default: dev
-    AllowedValues: [dev, prod]
+    AllowedValues:
+      - dev
+      - prod
   DeploymentVersion:
     Type: String
     Default: '1.0.0'
-    Description: 'Change this value to force function updates'
+    Description: 'Bump to force function updates'
 
 Mappings:
   FrontendUrls:
@@ -27,17 +29,19 @@ Mappings:
       url: 'https://app.pager.team'
   AllowOrigins:
     dev:
-      origins: http://localhost:3000,https://pager-dev.vercel.app,https://pager-frontend-*.vercel.app
+      origins: 'https://pager-dev.vercel.app,http://localhost:3000'
     prod:
-      origins: https://app.pager.team
+      origins: 'https://app.pager.team'
 
 Globals:
   Function:
-    Timeout: 30
-    MemorySize: 256
+    Timeout: 90
+    MemorySize: 512
     Runtime: nodejs20.x
     Architectures:
       - arm64
+    Tracing: Active
+
     Environment:
       Variables:
         DEPLOYMENT_VERSION: !Ref DeploymentVersion
@@ -60,50 +64,32 @@ Globals:
           - !Ref Environment
           - origins
 
-  Api:
-    Cors:
-      AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-      AllowOrigin: "'*'"
-      MaxAge: "'3600'"
-      AllowMethods: "'OPTIONS,POST,GET,PUT,DELETE,PATCH'"
-    MethodSettings:
-      # 1) Global catch‑all throttle
-      - ResourcePath: '/*'
-        HttpMethod: '*'
-        ThrottlingBurstLimit: 200 # max concurrent in a short burst
-        ThrottlingRateLimit: 100 # sustained req/sec
-
-      # 2) Chat “send message” endpoint gets its own higher limits
-      - ResourcePath: '/workspaces/{workspaceId}/channels/{channelId}/messages'
-        HttpMethod: 'POST'
-        ThrottlingBurstLimit: 1000
-        ThrottlingRateLimit: 500
-      - ResourcePath: '/workspaces/{workspaceId}/conversations/{conversationId}/messages'
-        HttpMethod: 'POST'
-        ThrottlingBurstLimit: 1000
-        ThrottlingRateLimit: 500
-      - ResourcePath: '/workspaces/{workspaceId}/channels/{channelId}/messages'
-        HttpMethod: 'GET'
-        ThrottlingBurstLimit: 1000
-        ThrottlingRateLimit: 500
-      - ResourcePath: '/workspaces/{workspaceId}/conversations/{conversationId}/messages'
-        HttpMethod: 'GET'
-        ThrottlingBurstLimit: 1000
-        ThrottlingRateLimit: 500
-      - ResourcePath: '/workspaces/{workspaceId}/messages/{messageId}/replies'
-        HttpMethod: 'GET'
-        ThrottlingBurstLimit: 1000
-        ThrottlingRateLimit: 500
-      - ResourcePath: '/workspaces/{workspaceId}/search/semantic'
-        HttpMethod: 'POST'
-        ThrottlingBurstLimit: 100
-        ThrottlingRateLimit: 50
-
 Resources:
-  MainApi:
-    Type: AWS::Serverless::Api
+  MainHttpApi:
+    Type: AWS::Serverless::HttpApi
     Properties:
       StageName: !Ref StageName
+      CorsConfiguration:
+        AllowOrigins:
+          - !FindInMap
+            - FrontendUrls
+            - !Ref Environment
+            - url
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Amz-Date
+          - X-Api-Key
+          - X-Amz-Security-Token
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        AllowCredentials: true
+        MaxAge: 86400
 
   # CREATE WORKSPACE
   CreateWorkspaceFunction:
@@ -113,11 +99,11 @@ Resources:
       Handler: create/app.handler
       Events:
         CreateWorkspace:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -134,11 +120,11 @@ Resources:
       Handler: get/app.handler
       Events:
         GetWorkspaces:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -153,14 +139,13 @@ Resources:
     Properties:
       CodeUri: functions/workspaces
       Handler: get-by-id/app.handler
-      Runtime: nodejs22.x
       Events:
         GetWorkspaceById:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -177,11 +162,11 @@ Resources:
       Handler: get-from-invite-token/app.handler
       Events:
         GetWorkspaceFromInviteToken:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/invite-token
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -198,11 +183,11 @@ Resources:
       Handler: update/app.handler
       Events:
         UpdateWorkspace:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}
             Method: put
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -219,11 +204,11 @@ Resources:
       Handler: delete/app.handler
       Events:
         DeleteWorkspace:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}
             Method: delete
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -253,17 +238,17 @@ Resources:
           NOTIFICATION_SERVICE_FUNCTION_ARN: !GetAtt NotificationServiceFunction.Arn
       Events:
         SendChannelMessage:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/channels/{channelId}/messages
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
         SendConversationMessage:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/conversations/{conversationId}/messages
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -282,11 +267,11 @@ Resources:
       Handler: get-message-replies/app.handler
       Events:
         GetMessageReplies:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/messages/{messageId}/replies
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -303,15 +288,15 @@ Resources:
       Handler: typing-indicator/app.handler
       Events:
         ChannelTyping:
-          Type: Api
+          Type: HttpApi
           Properties:
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
             Path: /workspaces/{workspaceId}/channels/{channelId}/typing
             Method: post
         ConversationTyping:
-          Type: Api
+          Type: HttpApi
           Properties:
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
             Path: /workspaces/{workspaceId}/conversations/{conversationId}/typing
             Method: post
     Metadata:
@@ -330,11 +315,11 @@ Resources:
       Handler: get/app.handler
       Events:
         GetMessages:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /messages
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -351,11 +336,11 @@ Resources:
       Handler: get-by-id/app.handler
       Events:
         GetMessageById:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/messages/{messageId}
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -372,11 +357,11 @@ Resources:
       Handler: update/app.handler
       Events:
         UpdateMessage:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/messages/{messageId}
             Method: put
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -393,11 +378,11 @@ Resources:
       Handler: delete/app.handler
       Events:
         DeleteMessage:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/messages/{messageId}
             Method: delete
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -428,11 +413,11 @@ Resources:
       Handler: mark-as-read/app.handler
       Events:
         MarkAsRead:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/me/notifications/read
             Method: patch
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -449,11 +434,11 @@ Resources:
       Handler: mark-all-as-read/app.handler
       Events:
         MarkAllAsRead:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/me/notifications/mark-all-read
             Method: patch
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -470,11 +455,11 @@ Resources:
       Handler: get-unread-count/app.handler
       Events:
         GetUnreadCount:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/me/notifications/unread-count
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -491,11 +476,11 @@ Resources:
       Handler: get/app.handler
       Events:
         GetNotifications:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/me/notifications
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -512,11 +497,11 @@ Resources:
       Handler: get-all-available/app.handler
       Events:
         GetAllAvailableChannels:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/channels/discover/available
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -533,11 +518,11 @@ Resources:
       Handler: get-user-channels/app.handler
       Events:
         GetUserChannels:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/members/me/channels
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -554,11 +539,11 @@ Resources:
       Handler: add-members/app.handler
       Events:
         AddMembersToChannel:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/channels/{channelId}/members
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -575,11 +560,11 @@ Resources:
       Handler: remove-members/app.handler
       Events:
         RemoveMembersFromChannel:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/channels/{channelId}/members
             Method: delete
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -596,11 +581,11 @@ Resources:
       Handler: get-messages/app.handler
       Events:
         GetChannelMessages:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/channels/{channelId}/messages
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -617,11 +602,11 @@ Resources:
       Handler: get-members/app.handler
       Events:
         GetChannelMembers:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/channels/{channelId}/members
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -638,11 +623,11 @@ Resources:
       Handler: create/app.handler
       Events:
         CreateChannel:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/channels
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -659,11 +644,11 @@ Resources:
       Handler: get-by-id/app.handler
       Events:
         GetChannelById:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/channels/{channelId}
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -680,11 +665,11 @@ Resources:
       Handler: update/app.handler
       Events:
         UpdateChannel:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/channels/{channelId}
             Method: patch
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -714,11 +699,11 @@ Resources:
             Resource: !Sub arn:aws:lambda:*:${AWS::AccountId}:function:*
       Events:
         DeleteChannel:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/channels/{channelId}
             Method: delete
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -753,11 +738,11 @@ Resources:
       Handler: create-or-get/app.handler
       Events:
         CreateOrGetConversation:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/conversations
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -774,11 +759,11 @@ Resources:
       Handler: get/app.handler
       Events:
         GetConversations:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/conversations
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -795,11 +780,11 @@ Resources:
       Handler: get-members/app.handler
       Events:
         GetConversationMembers:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/conversations/{conversationId}/members
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -816,11 +801,11 @@ Resources:
       Handler: get-by-id/app.handler
       Events:
         GetConversationById:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/conversations/{conversationId}
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -837,11 +822,11 @@ Resources:
       Handler: get-messages/app.handler
       Events:
         GetConversationMessages:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/conversations/{conversationId}/messages
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -858,11 +843,11 @@ Resources:
       Handler: delete/app.handler
       Events:
         DeleteConversation:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/conversations/{conversationId}
             Method: delete
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -879,11 +864,11 @@ Resources:
       Handler: app.handler
       Events:
         GetCurrentMember:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/members/me/current
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -900,11 +885,11 @@ Resources:
       Handler: app.handler
       Events:
         GetMembers:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/members
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -921,11 +906,11 @@ Resources:
       Handler: app.handler
       Events:
         GetMemberById:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/members/{memberId}
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -942,11 +927,11 @@ Resources:
       Handler: app.handler
       Events:
         UpdateMember:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/members/{memberId}
             Method: put
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -963,11 +948,11 @@ Resources:
       Handler: app.handler
       Events:
         RemoveMember:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/members/{memberId}
             Method: delete
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -984,11 +969,11 @@ Resources:
       Handler: sign-up/app.handler
       Events:
         SignUp:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /auth/sign-up
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1005,11 +990,11 @@ Resources:
       Handler: sign-in/app.handler
       Events:
         SignIn:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /auth/sign-in
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1026,11 +1011,11 @@ Resources:
       Handler: get-invite-link/app.handler
       Events:
         GetInviteLink:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /auth/invite-link
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1047,11 +1032,11 @@ Resources:
       Handler: sign-out/app.handler
       Events:
         SignOut:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /auth/sign-out
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1068,11 +1053,11 @@ Resources:
       Handler: current-user/app.handler
       Events:
         GetCurrentUser:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /auth/user
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1089,11 +1074,11 @@ Resources:
       Handler: update-profile/app.handler
       Events:
         UpdateProfile:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /auth/profile
             Method: put
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1110,11 +1095,11 @@ Resources:
       Handler: update-user-preferences/app.handler
       Events:
         UpdateUserPreferences:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /auth/user-preferences
             Method: patch
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1131,11 +1116,11 @@ Resources:
       Handler: reset-password-request/app.handler
       Events:
         ResetPasswordRequest:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /auth/reset-password
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1152,11 +1137,11 @@ Resources:
       Handler: update-password/app.handler
       Events:
         UpdatePassword:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /auth/update-password
             Method: put
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1173,11 +1158,11 @@ Resources:
       Handler: refresh-token/app.handler
       Events:
         RefreshToken:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /auth/refresh
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1194,11 +1179,11 @@ Resources:
       Handler: verify-email/app.handler
       Events:
         VerifyEmail:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /auth/verify
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1215,11 +1200,11 @@ Resources:
       Handler: toggle/app.handler
       Events:
         ToggleReaction:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/messages/{messageId}/reactions/toggle
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1236,11 +1221,11 @@ Resources:
       Handler: get/app.handler
       Events:
         GetReactions:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /reactions
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1257,11 +1242,11 @@ Resources:
       Handler: remove/app.handler
       Events:
         RemoveReaction:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /reactions/{reactionId}
             Method: delete
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1278,11 +1263,11 @@ Resources:
       Handler: user-reactions/app.handler
       Events:
         GetUserReactions:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /reactions/user
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1299,11 +1284,11 @@ Resources:
       Handler: stats/app.handler
       Events:
         GetReactionStats:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /reactions/stats/{messageId}
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1319,11 +1304,11 @@ Resources:
       Handler: google-auth/app.handler
       Events:
         InitiateGoogleAuth:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /auth/google
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1340,11 +1325,11 @@ Resources:
       Handler: generate-presigned-url.handler
       Events:
         GeneratePresignedUrl:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/attachments/generate/presigned-url
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1360,11 +1345,11 @@ Resources:
       Handler: confirm-upload.handler
       Events:
         ConfirmUpload:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/attachments/{attachmentId}/confirm
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1380,11 +1365,11 @@ Resources:
       Handler: delete-attachment.handler
       Events:
         DeleteAttachment:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/attachments/{attachmentId}
             Method: delete
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1506,11 +1491,11 @@ Resources:
       MemorySize: 512
       Events:
         ApiEvent:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/search/semantic
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1535,11 +1520,11 @@ Resources:
       Handler: get/app.handler
       Events:
         ApiEvent:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/agents
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1555,11 +1540,11 @@ Resources:
       Handler: update-name/app.handler
       Events:
         ApiEvent:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/agents/{agentId}/rename
             Method: put
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1606,11 +1591,11 @@ Resources:
       Handler: get-conversations/app.handler
       Events:
         ApiEvent:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/agents/{agentId}/conversations
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1626,11 +1611,11 @@ Resources:
       Handler: get-conversation-messages/app.handler
       Events:
         ApiEvent:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/agents/{agentId}/conversations/{conversationId}/messages
             Method: get
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -1648,11 +1633,11 @@ Resources:
       MemorySize: 1024
       Events:
         ApiEvent:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /workspaces/{workspaceId}/migrate/slack
             Method: post
-            RestApiId: !Ref MainApi
+            ApiId: !Ref MainHttpApi
     Metadata:
       BuildMethod: esbuild
       BuildProperties:

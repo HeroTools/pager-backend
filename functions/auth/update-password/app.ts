@@ -1,13 +1,14 @@
+import { createClient } from '@supabase/supabase-js';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getUserIdFromToken } from '../../common/helpers/auth';
-import { successResponse, errorResponse } from '../../common/utils/response';
-import { createClient } from '@supabase/supabase-js';
 import { withCors } from '../../common/utils/cors';
+import { errorResponse, successResponse } from '../../common/utils/response';
 
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const authHeader = event.headers.Authorization || event.headers.authorization;
+      const userId = await getUserIdFromToken(authHeader);
 
       if (!userId) {
         return errorResponse('Unauthorized', 401);
@@ -19,7 +20,7 @@ export const handler = withCors(
         return errorResponse('Password is required', 400);
       }
 
-      const token = event.headers.Authorization?.substring(7);
+      const token = authHeader?.substring(7);
 
       // Create a new client with the user's session
       const userSupabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {

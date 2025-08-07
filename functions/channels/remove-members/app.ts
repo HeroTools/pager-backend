@@ -1,11 +1,11 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
-import { z, ZodError } from 'zod';
 import { PoolClient } from 'pg';
+import { z, ZodError } from 'zod';
 import { getUserIdFromToken } from '../../common/helpers/auth';
 import { getWorkspaceMember } from '../../common/helpers/get-member';
-import { successResponse, errorResponse } from '../../common/utils/response';
-import dbPool from '../../common/utils/create-db-pool';
 import { withCors } from '../../common/utils/cors';
+import dbPool from '../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../common/utils/response';
 
 const removeMembersRequestSchema = z.object({
   channelMemberIds: z.string().array().min(1, 'channelMemberIds array cannot be empty'),
@@ -22,7 +22,9 @@ export const handler = withCors(
     let client: PoolClient | undefined;
 
     try {
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(
+        event.headers.Authorization || event.headers.authorization,
+      );
       if (!userId) {
         return errorResponse('Unauthorized', 401);
       }
@@ -39,7 +41,7 @@ export const handler = withCors(
 
       // Check if requesting user is a member of the channel and get their role
       const channelMemberResult = await client.query(
-        `SELECT cm.role 
+        `SELECT cm.role
              FROM channel_members cm
              WHERE cm.channel_id = $1 AND cm.workspace_member_id = $2`,
         [channelId, requestingMember.id],
@@ -101,7 +103,7 @@ export const handler = withCors(
 
       // Remove the members from the channel
       await client.query(
-        `DELETE FROM channel_members 
+        `DELETE FROM channel_members
              WHERE id = ANY($1::uuid[])`,
         [Array.from(foundChannelMemberIds)],
       );

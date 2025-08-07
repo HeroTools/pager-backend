@@ -19,7 +19,9 @@ export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     let client;
     try {
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(
+        event.headers.Authorization || event.headers.authorization,
+      );
       if (!userId) return errorResponse('Unauthorized', 401);
 
       const pathParamsResult = pathParamsSchema.safeParse(event.pathParameters);

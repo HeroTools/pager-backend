@@ -1,9 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
-import { supabase } from '../../common/utils/supabase-client';
-import { errorResponse, successResponse } from '../../common/utils/response';
 import { getUserIdFromToken } from '../../common/helpers/auth';
 import { withCors } from '../../common/utils/cors';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import { supabase } from '../../common/utils/supabase-client';
 
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -19,7 +19,9 @@ export const handler = withCors(
         return errorResponse('Invalid attachmentId in path parameters', 400);
       }
 
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(
+        event.headers.Authorization || event.headers.authorization,
+      );
 
       if (!userId) {
         return errorResponse('Unauthorized', 401);

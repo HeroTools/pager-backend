@@ -77,7 +77,9 @@ export const handler = withCors(
         }
       }
 
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(
+        event.headers.Authorization || event.headers.authorization,
+      );
       if (!userId) {
         return errorResponse('Unauthorized', 401);
       }

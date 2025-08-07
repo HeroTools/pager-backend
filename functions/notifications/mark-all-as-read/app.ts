@@ -1,11 +1,11 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
-import dbPool from '../../common/utils/create-db-pool';
 import { getUserIdFromToken } from '../../common/helpers/auth';
-import { errorResponse, successResponse } from '../../common/utils/response';
 import { getWorkspaceMember } from '../../common/helpers/get-member';
 import { withCors } from '../../common/utils/cors';
+import dbPool from '../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../common/utils/response';
 
 const pathParamsSchema = z.object({
   workspaceId: z.string().uuid('workspaceId is required'),
@@ -28,7 +28,9 @@ export const handler = withCors(
 
       const { workspaceId } = pathParamsResult.data;
 
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(
+        event.headers.Authorization || event.headers.authorization,
+      );
       if (!userId) {
         return errorResponse('Unauthorized', 401);
       }
@@ -57,10 +59,10 @@ export const handler = withCors(
       }
 
       const updateQuery = `
-            UPDATE notifications 
+            UPDATE notifications
             SET is_read = true, read_at = NOW(), updated_at = NOW()
-            WHERE workspace_member_id = $1 
-              AND workspace_id = $2 
+            WHERE workspace_member_id = $1
+              AND workspace_id = $2
               AND is_read = false
             RETURNING id
         `;

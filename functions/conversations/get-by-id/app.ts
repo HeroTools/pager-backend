@@ -1,15 +1,17 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getUserIdFromToken } from '../../common/helpers/auth';
 import { getMember } from '../../common/helpers/get-member';
-import { supabase } from '../../common/utils/supabase-client';
-import { successResponse, errorResponse } from '../../common/utils/response';
 import { withCors } from '../../common/utils/cors';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import { supabase } from '../../common/utils/supabase-client';
 
 // We will be fetching the messaging for the conversation here, in addition to the information that's related to the conversation.
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(
+        event.headers.Authorization || event.headers.authorization,
+      );
 
       if (!userId) {
         return errorResponse('Unauthorized', 401);

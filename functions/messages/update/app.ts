@@ -1,12 +1,12 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
 import { getUserIdFromToken } from '../../common/helpers/auth';
-import { supabase } from '../../common/utils/supabase-client';
-import { errorResponse, successResponse } from '../../common/utils/response';
 import { getMember } from '../../common/helpers/get-member';
-import { deltaToMarkdown } from '../helpers/quill-delta-converters';
-import { broadcastMessageUpdate } from '../helpers/broadcasting';
 import { withCors } from '../../common/utils/cors';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import { supabase } from '../../common/utils/supabase-client';
+import { broadcastMessageUpdate } from '../helpers/broadcasting';
+import { deltaToMarkdown } from '../helpers/quill-delta-converters';
 
 const PathParamsSchema = z.object({
   workspaceId: z.string().uuid('Invalid workspace ID format'),
@@ -59,7 +59,9 @@ export const handler = withCors(
         return errorResponse('Invalid message format: must be valid Quill delta JSON', 400);
       }
 
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(
+        event.headers.Authorization || event.headers.authorization,
+      );
       if (!userId) {
         return errorResponse('Unauthorized', 401);
       }

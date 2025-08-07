@@ -1,11 +1,11 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
 import { getUserIdFromToken } from '../../common/helpers/auth';
-import { successResponse, errorResponse } from '../../common/utils/response';
-import dbPool from '../../common/utils/create-db-pool';
 import { getWorkspaceMember } from '../../common/helpers/get-member';
-import { verifyMessageInWorkspace } from './helpers/verify-message';
 import { withCors } from '../../common/utils/cors';
+import dbPool from '../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import { verifyMessageInWorkspace } from './helpers/verify-message';
 
 const PathParamsSchema = z.object({
   workspaceId: z.string().uuid('Invalid workspace ID format'),
@@ -49,7 +49,9 @@ export const handler = withCors(
       const pathParams = PathParamsSchema.parse(event.pathParameters);
       const { workspaceId, messageId } = pathParams;
 
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(
+        event.headers.Authorization || event.headers.authorization,
+      );
       if (!userId) {
         return errorResponse('Unauthorized', 401);
       }
@@ -128,7 +130,7 @@ async function addReaction(
     const result = await client.query(
       `INSERT INTO reactions (workspace_id, message_id, workspace_member_id, value)
              VALUES ($1, $2, $3, $4)
-             ON CONFLICT (workspace_id, message_id, workspace_member_id, value) 
+             ON CONFLICT (workspace_id, message_id, workspace_member_id, value)
              DO NOTHING
              RETURNING id, value, created_at`,
       [workspaceId, messageId, workspaceMemberId, value],
@@ -175,10 +177,10 @@ async function removeReaction(
 
   try {
     const result = await client.query(
-      `DELETE FROM reactions 
-             WHERE workspace_id = $1 
-               AND message_id = $2 
-               AND workspace_member_id = $3 
+      `DELETE FROM reactions
+             WHERE workspace_id = $1
+               AND message_id = $2
+               AND workspace_member_id = $3
                AND value = $4
              RETURNING id, value, created_at`,
       [workspaceId, messageId, workspaceMemberId, value],

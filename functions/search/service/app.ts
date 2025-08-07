@@ -70,7 +70,9 @@ export const handler: APIGatewayProxyHandler = withCors(async (event, _ctx) => {
 
   try {
     const workspaceId = event.pathParameters?.workspaceId;
-    const userId = await getUserIdFromToken(event.headers.Authorization);
+    const userId = await getUserIdFromToken(
+      event.headers.Authorization || event.headers.authorization,
+    );
     const body = JSON.parse(event.body || '{}') as SearchRequest;
     const { query, limit = SEARCH_LIMIT, includeThreads = true, channelId, conversationId } = body;
 

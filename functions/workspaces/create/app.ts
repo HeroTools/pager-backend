@@ -20,7 +20,9 @@ export const handler = withCors(
         return errorResponse('Request body is required', 400);
       }
 
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(
+        event.headers.Authorization || event.headers.authorization,
+      );
       if (!userId) {
         return errorResponse('Unauthorized', 401);
       }

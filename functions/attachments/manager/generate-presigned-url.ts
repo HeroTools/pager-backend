@@ -68,7 +68,9 @@ export const handler = withCors(
         return errorResponse('Invalid workspaceId in path parameters', 400);
       }
 
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(
+        event.headers.Authorization || event.headers.authorization,
+      );
 
       if (!userId) {
         return errorResponse('Unauthorized', 401);

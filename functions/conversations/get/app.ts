@@ -10,7 +10,8 @@ export const handler = withCors(
     let client;
     try {
       // 1) Auth & workspace check
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const authHeader = event.headers.Authorization || event.headers.authorization;
+      const userId = await getUserIdFromToken(authHeader);
       if (!userId) return errorResponse('Unauthorized', 401);
 
       const workspaceId = event.pathParameters?.workspaceId;

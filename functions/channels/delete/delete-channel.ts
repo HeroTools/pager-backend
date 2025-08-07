@@ -11,7 +11,9 @@ const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-ea
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(
+        event.headers.Authorization || event.headers.authorization,
+      );
 
       if (!userId) {
         return errorResponse('Unauthorized', 401);

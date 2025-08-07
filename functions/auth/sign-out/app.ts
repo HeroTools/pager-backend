@@ -1,12 +1,12 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { createClient } from '@supabase/supabase-js';
-import { successResponse, errorResponse } from '../../common/utils/response';
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { withCors } from '../../common/utils/cors';
+import { errorResponse, successResponse } from '../../common/utils/response';
 
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
-      const authHeader = event.headers.Authorization;
+      const authHeader = event.headers.Authorization || event.headers.authorization;
 
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return errorResponse('Authorization header required', 401);

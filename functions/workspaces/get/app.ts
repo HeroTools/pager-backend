@@ -1,13 +1,16 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getUserIdFromToken } from '../../common/helpers/auth';
+import { withCors } from '../../common/utils/cors';
 import { errorResponse, successResponse } from '../../common/utils/response';
 import { supabase } from '../../common/utils/supabase-client';
-import { withCors } from '../../common/utils/cors';
 
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    console.log('Received request:', event);
     try {
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(
+        event.headers.Authorization || event.headers.authorization,
+      );
 
       if (!userId) {
         return errorResponse('Unauthorized', 401);

@@ -2,12 +2,12 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
 import { getUserIdFromToken } from '../../common/helpers/auth';
-import { errorResponse, successResponse } from '../../common/utils/response';
-import dbPool from '../../common/utils/create-db-pool';
-import { validateMessageAccess } from './helpers/validate-member-access';
-import { softDeleteOnlyParent } from './helpers/soft-delete-parent-message';
-import { broadcastMessageDelete } from './helpers/broadcasting';
 import { withCors } from '../../common/utils/cors';
+import dbPool from '../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../common/utils/response';
+import { broadcastMessageDelete } from './helpers/broadcasting';
+import { softDeleteOnlyParent } from './helpers/soft-delete-parent-message';
+import { validateMessageAccess } from './helpers/validate-member-access';
 
 const pathParamsSchema = z.object({
   messageId: z.string().uuid('Invalid message ID format'),
@@ -18,7 +18,9 @@ export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     let client: PoolClient | null = null;
     try {
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(
+        event.headers.Authorization || event.headers.authorization,
+      );
       if (!userId) {
         return errorResponse('Unauthorized', 401);
       }

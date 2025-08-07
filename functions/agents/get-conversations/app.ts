@@ -35,7 +35,9 @@ export const handler = withCors(
     let client;
     try {
       // 1) Auth check
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const userId = await getUserIdFromToken(
+        event.headers.Authorization || event.headers.authorization,
+      );
       if (!userId) return errorResponse('Unauthorized', 401);
 
       // 2) Validate path parameters

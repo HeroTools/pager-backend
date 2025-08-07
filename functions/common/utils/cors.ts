@@ -1,10 +1,4 @@
-import {
-  APIGatewayProxyEvent,
-  APIGatewayProxyResult,
-  Callback,
-  Context,
-  Handler,
-} from 'aws-lambda';
+import { APIGatewayProxyEvent, APIGatewayProxyResult, Context, Handler } from 'aws-lambda';
 
 interface CorsConfig {
   allowedOrigins: string[];
@@ -15,7 +9,11 @@ interface CorsConfig {
 }
 
 const defaultConfig: CorsConfig = {
-  allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',').map((o) => o.trim()) || [],
+  allowedOrigins: [
+    'https://pager-dev.vercel.app',
+    'http://localhost:3000',
+    'https://app.pager.team',
+  ],
   allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'],
   allowedHeaders: [
     'Content-Type',
@@ -77,6 +75,10 @@ export function buildCorsHeaders(
   const origin = normalizeOrigin(event);
   const headers: Record<string, string> = {};
 
+  console.log('Origin from request:', origin);
+  console.log('Allowed origins:', corsConfig.allowedOrigins);
+  console.log('Is origin allowed:', origin && isAllowedOrigin(origin, corsConfig.allowedOrigins));
+
   if (origin && isAllowedOrigin(origin, corsConfig.allowedOrigins)) {
     headers['Access-Control-Allow-Origin'] = origin;
     if (corsConfig.allowCredentials) {
@@ -114,22 +116,16 @@ export function buildCorsHeaders(
   return headers;
 }
 
-type SimpleHandler = (event: APIGatewayProxyEvent) => Promise<APIGatewayProxyResult>;
-type FullHandler = (
+type SimpleHandler = (
   event: APIGatewayProxyEvent,
   context: Context,
-  callback: Callback<APIGatewayProxyResult>,
 ) => Promise<APIGatewayProxyResult>;
 
 export function withCors(
-  handler: SimpleHandler | FullHandler,
+  handler: SimpleHandler,
   config: Partial<CorsConfig> = {},
 ): Handler<APIGatewayProxyEvent, APIGatewayProxyResult> {
-  return async (
-    event: APIGatewayProxyEvent,
-    context: Context,
-    callback: Callback<APIGatewayProxyResult>,
-  ): Promise<APIGatewayProxyResult> => {
+  return async (event: APIGatewayProxyEvent, context: Context): Promise<APIGatewayProxyResult> => {
     try {
       const corsHeaders = buildCorsHeaders(event, config);
 
@@ -141,19 +137,13 @@ export function withCors(
         };
       }
 
-      const origin = normalizeOrigin(event);
+      // Remove callback parameter
+      const response = await handler(event, context);
 
-      if (origin && !corsHeaders['Access-Control-Allow-Origin']) {
-        return {
-          statusCode: 403,
-          headers: corsHeaders,
-          body: JSON.stringify({ error: 'Origin not allowed' }),
-        };
-      }
-
-      const response = await handler(event, context, callback);
+      console.log('CORS wrapper received response:', response ? 'valid' : 'undefined');
 
       if (!response) {
+        console.error('Handler returned undefined/null response');
         return {
           statusCode: 500,
           headers: corsHeaders,
@@ -168,29 +158,14 @@ export function withCors(
           ...(response.headers || {}),
         },
         body: response.body || '',
-        ...(response.multiValueHeaders && { multiValueHeaders: response.multiValueHeaders }),
-        ...(response.isBase64Encoded !== undefined && {
-          isBase64Encoded: response.isBase64Encoded,
-        }),
       };
     } catch (error) {
-      console.error('CORS error:', error);
+      console.error('CORS wrapper error:', error);
       return {
-        statusCode: 400,
-        headers: {
-          'Access-Control-Allow-Origin': normalizeOrigin(event) || '*',
-          'Access-Control-Allow-Credentials': 'true',
-        },
-        body: JSON.stringify({
-          error: error instanceof Error ? error.message : 'CORS error',
-        }),
+        statusCode: 500,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Internal server error' }),
       };
     }
   };
 }
-
-export const createCorsHandler = (config: Partial<CorsConfig> = {}) => {
-  return function <T extends SimpleHandler | FullHandler>(handler: T) {
-    return withCors(handler, config);
-  };
-};

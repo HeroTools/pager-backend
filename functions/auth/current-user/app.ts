@@ -6,8 +6,10 @@ import { supabase } from '../../common/utils/supabase-client';
 
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    console.log('Received request:', event);
     try {
-      const userId = await getUserIdFromToken(event.headers.Authorization);
+      const authHeader = event.headers.Authorization || event.headers.authorization;
+      const userId = await getUserIdFromToken(authHeader);
 
       if (!userId) {
         return errorResponse('Unauthorized', 401);
@@ -22,7 +24,7 @@ export const handler = withCors(
       const {
         data: { user },
         error: authError,
-      } = await supabase.auth.getUser(event.headers.Authorization?.substring(7));
+      } = await supabase.auth.getUser(authHeader?.substring(7));
 
       if (authError || !user) {
         return errorResponse('Invalid token', 401);
