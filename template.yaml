@@ -27,7 +27,7 @@ Mappings:
       url: 'https://app.pager.team'
   AllowOrigins:
     dev:
-      origins: http://localhost:3000,https://pager-dev.vercel.app,https://pager-frontend-*.vercel.app
+      origins: http://localhost:3000,https://pager-dev.vercel.app,https://pager-frontend-git-improved-migration-zachs-projects-3b56783e.vercel.app
     prod:
       origins: https://app.pager.team
 
@@ -1639,13 +1639,42 @@ Resources:
         EntryPoints:
           - get-conversation-messages/app.ts
 
+  # SQS Queue for migration jobs
+  MigrationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${StackName}-${Environment}-migration-queue.fifo'
+      FifoQueue: true
+      ContentBasedDeduplication: false
+      VisibilityTimeout: 960 # 16 minutes (more than Lambda timeout)
+      MessageRetentionPeriod: 1209600 # 14 days
+      ReceiveMessageWaitTimeSeconds: 20 # Enable long polling
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt MigrationDLQ.Arn
+        maxReceiveCount: 3
+
+  # Dead Letter Queue for failed migrations
+  MigrationDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${StackName}-${Environment}-migration-dlq.fifo'
+      FifoQueue: true
+      MessageRetentionPeriod: 1209600 # 14 days
+
+  # Lambda function to queue migration jobs (replaces the original sync function)
   MigrationFromSlackFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: functions/migration
       Handler: from-slack/app.handler
-      Timeout: 900
-      MemorySize: 1024
+      Timeout: 30 # Short timeout since it just queues
+      MemorySize: 256
+      Environment:
+        Variables:
+          MIGRATION_QUEUE_URL: !Ref MigrationQueue
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt MigrationQueue.QueueName
       Events:
         ApiEvent:
           Type: Api
@@ -1661,6 +1690,60 @@ Resources:
         EntryPoints:
           - from-slack/app.ts
 
+  # Lambda function to process migration jobs from SQS
+  MigrationQueueHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/migration
+      Handler: from-slack/queue-handler.handler
+      Timeout: 900 # 15 minutes
+      MemorySize: 1024
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt MigrationQueue.Arn
+            BatchSize: 1 # Process one job at a time
+            MaximumBatchingWindowInSeconds: 0
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - from-slack/queue-handler.ts
+
+  # Lambda function to check migration status
+  MigrationStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/migration
+      Handler: status/app.handler
+      Timeout: 30
+      MemorySize: 256
+      Events:
+        # Get all jobs for a workspace
+        ApiEventList:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/migrate/jobs
+            Method: get
+            RestApiId: !Ref MainApi
+        # Get specific job status
+        ApiEventStatus:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/migrate/jobs/{jobId}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - status/app.ts
+
 Outputs:
   # Function URL for streaming
   StreamingFunctionUrl:
@@ -1668,3 +1751,15 @@ Outputs:
     Value: !GetAtt AgentChatFunctionUrl.FunctionUrl
     Export:
       Name: !Sub '${AWS::StackName}-StreamingFunctionUrl'
+
+  MigrationQueueUrl:
+    Description: URL of the migration queue
+    Value: !Ref MigrationQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-MigrationQueueUrl'
+
+  MigrationDLQUrl:
+    Description: URL of the migration dead letter queue
+    Value: !Ref MigrationDLQ
+    Export:
+      Name: !Sub '${AWS::StackName}-MigrationDLQUrl'
