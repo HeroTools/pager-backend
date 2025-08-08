@@ -71,10 +71,12 @@ export const handler = withCors(
         try {
           const parsed = JSON.parse(body);
           deltaOps = parsed.ops;
-          messageText = deltaToMarkdown(deltaOps);
+          messageText = requestBodyResult.data.plain_text || deltaToMarkdown(deltaOps);
         } catch (error) {
           return errorResponse('Invalid message format', 400);
         }
+      } else if (requestBodyResult.data.plain_text) {
+        messageText = requestBodyResult.data.plain_text;
       }
 
       const userId = await getUserIdFromToken(event.headers.Authorization);
