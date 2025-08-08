@@ -70,7 +70,7 @@ const defaultConverters: Converters = {
     thematic_break(this: Node) {
       this.open = '\n---\n' + this.open;
     },
-    mention(this: Node, data: { id: string; name: string; userId: string }) {
+    mention(this: Node, data: { id: string }) {
       this.append(`<@${data.id}>`);
     },
   },
