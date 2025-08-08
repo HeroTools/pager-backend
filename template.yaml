@@ -27,7 +27,7 @@ Mappings:
       url: 'https://app.pager.team'
   AllowOrigins:
     dev:
-      origins: http://localhost:3000,https://pager-dev.vercel.app,https://pager-frontend-git-improved-migration-zachs-projects-3b56783e.vercel.app
+      origins: http://localhost:3000,https://pager-dev.vercel.app
     prod:
       origins: https://app.pager.team
 
@@ -1639,7 +1639,6 @@ Resources:
         EntryPoints:
           - get-conversation-messages/app.ts
 
-  # SQS Queue for migration jobs
   MigrationQueue:
     Type: AWS::SQS::Queue
     Properties:
@@ -1653,7 +1652,6 @@ Resources:
         deadLetterTargetArn: !GetAtt MigrationDLQ.Arn
         maxReceiveCount: 3
 
-  # Dead Letter Queue for failed migrations
   MigrationDLQ:
     Type: AWS::SQS::Queue
     Properties:
@@ -1661,13 +1659,12 @@ Resources:
       FifoQueue: true
       MessageRetentionPeriod: 1209600 # 14 days
 
-  # Lambda function to queue migration jobs (replaces the original sync function)
   MigrationFromSlackFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: functions/migration
       Handler: from-slack/app.handler
-      Timeout: 30 # Short timeout since it just queues
+      Timeout: 30
       MemorySize: 256
       Environment:
         Variables:
@@ -1690,7 +1687,6 @@ Resources:
         EntryPoints:
           - from-slack/app.ts
 
-  # Lambda function to process migration jobs from SQS
   MigrationQueueHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -1713,7 +1709,6 @@ Resources:
         EntryPoints:
           - from-slack/queue-handler.ts
 
-  # Lambda function to check migration status
   MigrationStatusFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -1722,14 +1717,12 @@ Resources:
       Timeout: 30
       MemorySize: 256
       Events:
-        # Get all jobs for a workspace
         ApiEventList:
           Type: Api
           Properties:
             Path: /workspaces/{workspaceId}/migrate/jobs
             Method: get
             RestApiId: !Ref MainApi
-        # Get specific job status
         ApiEventStatus:
           Type: Api
           Properties:
