@@ -1,9 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import { getMember } from '../../common/helpers/get-member';
-import { supabase } from '../../common/utils/supabase-client';
-import { successResponse, errorResponse } from '../../common/utils/response';
-import { withCors } from '../../common/utils/cors';
+import { getUserIdFromToken } from '../../../common/helpers/auth';
+import { getMember } from '../../../common/helpers/get-member';
+import { withCors } from '../../../common/utils/cors';
+import { errorResponse, successResponse } from '../../../common/utils/response';
+import { supabase } from '../../../common/utils/supabase-client';
 // We will be fetching the messaging for the channel here, in addition to the information that's related to the channel.
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {

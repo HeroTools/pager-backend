@@ -1,17 +1,17 @@
 import { Handler } from 'aws-lambda';
 import { PoolClient } from 'pg';
 
-import dbPool from '../../common/utils/create-db-pool';
+import dbPool from '../../../common/utils/create-db-pool';
+import { Notification, NotificationEvent } from '../types';
 import { broadcastNotification } from './helpers/broadcasting';
 import { extractAndResolveMentions } from './helpers/mentions';
 import {
-  createMentionNotifications,
-  createDirectMessageNotifications,
-  createThreadReplyNotifications,
   createChannelMessageNotifications,
+  createDirectMessageNotifications,
+  createMentionNotifications,
+  createThreadReplyNotifications,
 } from './helpers/notification-builders';
 import { insertNotifications } from './helpers/notification-database';
-import { NotificationEvent, Notification } from '../types';
 
 async function processMessageNotifications(event: NotificationEvent): Promise<void> {
   let client: PoolClient | null = null;

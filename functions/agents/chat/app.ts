@@ -2,8 +2,8 @@ import { run } from '@openai/agents';
 import type { APIGatewayProxyEventV2, Context } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import dbPool from '../../common/utils/create-db-pool';
+import { getUserIdFromToken } from '../../../common/helpers/auth';
+import dbPool from '../../../common/utils/create-db-pool';
 import { conversationAgent } from './agents';
 import { getOrCreateConversation, saveAiMessage } from './helpers/database-helpers';
 

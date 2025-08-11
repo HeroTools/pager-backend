@@ -4,8 +4,8 @@ import {
   SendMessageBatchRequestEntry,
 } from '@aws-sdk/client-sqs';
 import { ScheduledHandler } from 'aws-lambda';
-import dbPool from '../../common/utils/create-db-pool';
-import { errorResponse, successResponse } from '../../common/utils/response';
+import dbPool from '../../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../../common/utils/response';
 
 const sqs = new SQSClient({});
 const BATCH_SIZE = parseInt(process.env.BATCH_SIZE || '100');

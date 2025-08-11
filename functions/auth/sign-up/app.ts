@@ -1,11 +1,11 @@
+import { Session, User } from '@supabase/supabase-js';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '../../common/utils/supabase-client';
-import { errorResponse, successResponse } from '../../common/utils/response';
-import { parseRpcError } from '../../common/utils/errors';
+import { withCors } from '../../../common/utils/cors';
+import { parseRpcError } from '../../../common/utils/errors';
+import { errorResponse, successResponse } from '../../../common/utils/response';
+import { supabase } from '../../../common/utils/supabase-client';
 import { AuthResponse, UserProfile, Workspace } from '../types';
-import { withCors } from '../../common/utils/cors';
 
 const registerSchema = z.object({
   email: z.string().email('Invalid email format'),

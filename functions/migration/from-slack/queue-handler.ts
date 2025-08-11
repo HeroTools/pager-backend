@@ -2,10 +2,10 @@ import AdmZip from 'adm-zip';
 import { SQSEvent, SQSRecord } from 'aws-lambda';
 import { Readable } from 'stream';
 import { v4 as uuidv4 } from 'uuid';
-import { convertShortcodeToEmoji } from '../../common/helpers/get-emoji';
-import { getWorkspaceMember } from '../../common/helpers/get-member';
-import dbPool from '../../common/utils/create-db-pool';
-import { supabase } from '../../common/utils/supabase-client';
+import { convertShortcodeToEmoji } from '../../../common/helpers/get-emoji';
+import { getWorkspaceMember } from '../../../common/helpers/get-member';
+import dbPool from '../../../common/utils/create-db-pool';
+import { supabase } from '../../../common/utils/supabase-client';
 import { DirectMessage, MigrationJob, SlackChannel, SlackMessage, SlackUser } from './types';
 
 interface JobStatus {
