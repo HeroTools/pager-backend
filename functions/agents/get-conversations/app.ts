@@ -1,10 +1,10 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import { getMember } from '../../common/helpers/get-member';
-import { withCors } from '../../common/utils/cors';
-import dbPool from '../../common/utils/create-db-pool';
-import { errorResponse, successResponse } from '../../common/utils/response';
+import { getUserIdFromToken } from '../../../common/helpers/auth';
+import { getMember } from '../../../common/helpers/get-member';
+import { withCors } from '../../../common/utils/cors';
+import dbPool from '../../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../../common/utils/response';
 
 const pathParamsSchema = z.object({
   workspaceId: z.string().uuid('Invalid workspace ID format'),

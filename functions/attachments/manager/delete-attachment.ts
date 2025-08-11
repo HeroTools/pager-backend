@@ -1,9 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
-import { supabase } from '../../common/utils/supabase-client';
-import { errorResponse, successResponse } from '../../common/utils/response';
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import { withCors } from '../../common/utils/cors';
+import { getUserIdFromToken } from '../../../common/helpers/auth';
+import { withCors } from '../../../common/utils/cors';
+import { errorResponse, successResponse } from '../../../common/utils/response';
+import { supabase } from '../../../common/utils/supabase-client';
 
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {

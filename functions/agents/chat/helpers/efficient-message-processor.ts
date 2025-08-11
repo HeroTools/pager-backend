@@ -1,4 +1,4 @@
-import { openai } from '../../../common/utils/create-embedding';
+import { openai } from '../../../../common/utils/create-embedding';
 
 export interface Message {
   messageId: string;

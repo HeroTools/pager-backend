@@ -1,7 +1,7 @@
 // src/tools/fetch-time-range-messages.ts
 import { tool } from '@openai/agents';
 import { z } from 'zod';
-import dbPool from '../../../common/utils/create-db-pool';
+import dbPool from '../../../../common/utils/create-db-pool';
 import { summarizingProcessor } from '../helpers/efficient-message-processor';
 
 export const fetchTimeRangeMessages = tool({

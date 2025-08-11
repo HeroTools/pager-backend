@@ -1,10 +1,10 @@
 import { APIGatewayProxyEvent, Context } from 'aws-lambda';
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import { getWorkspaceMember } from '../../common/helpers/get-member';
-import { successResponse, errorResponse } from '../../common/utils/response';
+import { getUserIdFromToken } from '../../../common/helpers/auth';
+import { getWorkspaceMember } from '../../../common/helpers/get-member';
+import { withCors } from '../../../common/utils/cors';
+import dbPool from '../../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../../common/utils/response';
 import { parseChannelName } from '../helpers/parse-channel-name';
-import dbPool from '../../common/utils/create-db-pool';
-import { withCors } from '../../common/utils/cors';
 
 export const handler = withCors(async (event: APIGatewayProxyEvent, context: Context) => {
   context.callbackWaitsForEmptyEventLoop = false;
@@ -40,18 +40,18 @@ export const handler = withCors(async (event: APIGatewayProxyEvent, context: Con
                 INSERT INTO channels (name, workspace_id, channel_type, description)
                 SELECT $1, $2, $3, $4
                 WHERE NOT EXISTS (
-                    SELECT 1 FROM channels 
+                    SELECT 1 FROM channels
                     WHERE workspace_id = $2 AND name = $1
                 )
                 RETURNING id, name, channel_type, created_at
             ),
             new_member AS (
                 INSERT INTO channel_members (channel_id, workspace_member_id, role)
-                SELECT id, $5, 'admin' 
+                SELECT id, $5, 'admin'
                 FROM new_channel
                 RETURNING channel_id
             )
-            SELECT 
+            SELECT
                 nc.id as channel_id,
                 nc.name,
                 nc.channel_type,
