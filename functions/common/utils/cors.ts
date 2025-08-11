@@ -12,25 +12,70 @@ interface CorsConfig {
   allowedHeaders: string[];
   allowCredentials: boolean;
   maxAge: number;
+  allowVercelPreviews?: boolean;
+  vercelProjects?: string[];
+  vercelBaseDomain?: string;
 }
 
-const defaultConfig: CorsConfig = {
-  allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',').map((o) => o.trim()) || [],
-  allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'],
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization',
-    'X-Amz-Date',
-    'X-Api-Key',
-    'X-Amz-Security-Token',
-    'X-Requested-With',
-  ],
-  allowCredentials: true,
-  maxAge: 86400,
-};
+function envList(name: string): string[] {
+  const raw = process.env[name];
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Build Vercel preview origin patterns from project slugs.
+ * Uses your wildcard-aware matcher (e.g. https://project-git-*.vercel.app).
+ */
+function buildVercelPreviewOrigins(projects: string[], base = 'vercel.app'): string[] {
+  if (!projects.length) return [];
+  const withHttps = (host: string) => `https://${host}`;
+
+  const patterns: string[] = [];
+  for (const p of projects) {
+    patterns.push(withHttps(`${p}.${base}`));
+    patterns.push(withHttps(`${p}-git-*.${base}`));
+    patterns.push(withHttps(`${p}-*.${base}`));
+  }
+  return patterns;
+}
+
+const defaultConfig: CorsConfig = (() => {
+  const allowedOrigins = envList('ALLOWED_ORIGINS');
+  const allowVercelPreviews =
+    (process.env.ALLOW_VERCEL_PREVIEWS ?? 'true').toLowerCase() !== 'false';
+  const vercelProjects = envList('VERCEL_PROJECTS');
+  const vercelBaseDomain = process.env.VERCEL_BASE_DOMAIN?.trim() || 'vercel.app';
+
+  const vercelOrigins = allowVercelPreviews
+    ? buildVercelPreviewOrigins(vercelProjects, vercelBaseDomain)
+    : [];
+
+  return {
+    allowedOrigins: [...allowedOrigins, ...vercelOrigins],
+    allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Amz-Date',
+      'X-Api-Key',
+      'X-Amz-Security-Token',
+      'X-Requested-With',
+    ],
+    allowCredentials: true,
+    maxAge: 86400,
+
+    allowVercelPreviews,
+    vercelProjects,
+    vercelBaseDomain,
+  };
+})();
 
 function normalizeOrigin(event: APIGatewayProxyEvent): string | undefined {
-  return event.headers.origin || event.headers.Origin || event.headers['origin'];
+  return event.headers.origin || event.headers.Origin || (event.headers as any)['origin'];
 }
 
 function isAllowedOrigin(origin: string, allowedOrigins: string[]): boolean {
@@ -43,15 +88,14 @@ function isAllowedOrigin(origin: string, allowedOrigins: string[]): boolean {
       return true;
     }
 
+    // Wildcard support: user can provide things like https://*.example.com or https://project-git-*.vercel.app
     if (pattern.includes('*')) {
       const escapedPattern = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*');
       const regex = new RegExp(`^${escapedPattern}$`, 'i');
-      const matches = regex.test(origin);
-      return matches;
+      return regex.test(origin);
     }
 
-    const exactMatch = pattern.toLowerCase() === origin.toLowerCase();
-    return exactMatch;
+    return pattern.toLowerCase() === origin.toLowerCase();
   });
 }
 
@@ -74,34 +118,48 @@ export function buildCorsHeaders(
   config: Partial<CorsConfig> = {},
 ): Record<string, string> {
   const corsConfig = { ...defaultConfig, ...config };
+
+  const mergedAllowedOrigins = [
+    ...new Set([
+      ...corsConfig.allowedOrigins,
+      ...(corsConfig.allowVercelPreviews
+        ? buildVercelPreviewOrigins(
+            corsConfig.vercelProjects ?? defaultConfig.vercelProjects ?? [],
+            corsConfig.vercelBaseDomain || defaultConfig.vercelBaseDomain || 'vercel.app',
+          )
+        : []),
+    ]),
+  ];
+
   const origin = normalizeOrigin(event);
   const headers: Record<string, string> = {};
 
-  if (origin && isAllowedOrigin(origin, corsConfig.allowedOrigins)) {
+  if (origin && isAllowedOrigin(origin, mergedAllowedOrigins)) {
     headers['Access-Control-Allow-Origin'] = origin;
     if (corsConfig.allowCredentials) {
       headers['Access-Control-Allow-Credentials'] = 'true';
     }
-  } else if (corsConfig.allowedOrigins.includes('*') && !corsConfig.allowCredentials) {
+  } else if (mergedAllowedOrigins.includes('*') && !corsConfig.allowCredentials) {
     headers['Access-Control-Allow-Origin'] = '*';
   }
 
+  // Cache per-Origin behaviour
   headers['Vary'] = 'Origin';
 
   if (event.httpMethod === 'OPTIONS') {
-    headers['Access-Control-Allow-Methods'] = corsConfig.allowedMethods.join(',');
-    headers['Access-Control-Allow-Headers'] = corsConfig.allowedHeaders.join(',');
-    headers['Access-Control-Max-Age'] = corsConfig.maxAge.toString();
+    headers['Access-Control-Allow-Methods'] = (corsConfig.allowedMethods || []).join(',');
+    headers['Access-Control-Allow-Headers'] = (corsConfig.allowedHeaders || []).join(',');
+    headers['Access-Control-Max-Age'] = String(corsConfig.maxAge ?? 86400);
 
     const requestedMethod = getRequestedMethod(event);
-    if (requestedMethod && !corsConfig.allowedMethods.includes(requestedMethod)) {
+    if (requestedMethod && !(corsConfig.allowedMethods || []).includes(requestedMethod)) {
       throw new Error(`Method ${requestedMethod} not allowed`);
     }
 
     const requestedHeaders = getRequestedHeaders(event);
     const disallowedHeaders = requestedHeaders.filter(
       (header) =>
-        !corsConfig.allowedHeaders.some(
+        !(corsConfig.allowedHeaders || []).some(
           (allowed) => allowed.toLowerCase() === header.toLowerCase(),
         ),
     );
@@ -147,7 +205,7 @@ export function withCors(
         return {
           statusCode: 403,
           headers: corsHeaders,
-          body: JSON.stringify({ error: 'Origin not allowed' }),
+          body: JSON.stringify({ error: `Origin not allowed: ${origin}` }),
         };
       }
 
@@ -175,11 +233,13 @@ export function withCors(
       };
     } catch (error) {
       console.error('CORS error:', error);
+      const origin = normalizeOrigin(event);
       return {
         statusCode: 400,
         headers: {
-          'Access-Control-Allow-Origin': normalizeOrigin(event) || '*',
+          'Access-Control-Allow-Origin': origin || '*',
           'Access-Control-Allow-Credentials': 'true',
+          Vary: 'Origin',
         },
         body: JSON.stringify({
           error: error instanceof Error ? error.message : 'CORS error',
