@@ -8,6 +8,7 @@ export interface NotificationEvent {
   parentMessageId?: string;
   threadId?: string;
   senderName: string;
+  mentionedWorkspaceMemberIds: string[];
 }
 
 export interface Notification {
