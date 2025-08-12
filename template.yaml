@@ -27,7 +27,7 @@ Mappings:
       url: 'https://app.pager.team'
   AllowOrigins:
     dev:
-      origins: http://localhost:3000,https://pager-dev.vercel.app
+      origins: http://localhost:3000,https://pager-dev.vercel.app,https://pager-frontend-git-skeleton-loaders-zachs-projects-3b56783e.vercel.app
     prod:
       origins: https://app.pager.team
 
@@ -51,6 +51,8 @@ Globals:
         PG_DATABASE: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-database:SecretString}}'
         PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-password:SecretString}}'
         PG_PORT: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-port:SecretString}}'
+        VERCEL_PROJECTS: pager-frontend
+        ALLOW_VERCEL_PREVIEWS: true
         FRONTEND_URL: !FindInMap
           - FrontendUrls
           - !Ref Environment
