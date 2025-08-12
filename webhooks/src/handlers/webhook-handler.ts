@@ -6,7 +6,7 @@ import dbPool from '../../../common/utils/create-db-pool';
 const sqs = new SQS({ region: process.env.AWS_REGION || 'us-east-2' });
 
 interface WebhookPayload {
-  channel_id: string; // Required channel ID
+  channel_id: string;
   text: string;
   markdown?: string;
   attachments?: Array<{
@@ -22,9 +22,10 @@ interface WebhookPayload {
 interface QueuedMessage {
   webhookId: string;
   workspaceId: string;
-  channelId: string; // Now always present
-  payload: Omit<WebhookPayload, 'channel_id'>; // Remove channel_id from payload since it's extracted
+  channelId: string;
+  payload: Omit<WebhookPayload, 'channel_id'>;
   requestId: string;
+  authenticatedUser?: string;
 }
 
 export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
@@ -43,21 +44,55 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
 
     const signature = event.headers['x-pager-signature'];
     const timestamp = event.headers['x-pager-request-timestamp'];
+    const userAgent = event.headers['user-agent'];
 
-    if (signature && timestamp) {
-      if (!verifySignature(event.body || '', signature, timestamp, webhook.signing_secret)) {
-        return errorResponse(401, 'Invalid signature', requestId);
-      }
+    if (!signature || !timestamp) {
+      await logUnauthorizedAttempt(
+        webhookId,
+        event.requestContext.http.sourceIp,
+        userAgent,
+        'Missing signature or timestamp',
+      );
+      return errorResponse(
+        401,
+        'Authentication required: Missing signature or timestamp headers',
+        requestId,
+      );
+    }
+
+    const signatureVerification = verifySignature(
+      event.body || '',
+      signature,
+      timestamp,
+      webhook.signing_secret,
+    );
+    if (!signatureVerification.valid) {
+      await logUnauthorizedAttempt(
+        webhookId,
+        event.requestContext.http.sourceIp,
+        userAgent,
+        signatureVerification.reason,
+      );
+      return errorResponse(
+        401,
+        `Authentication failed: ${signatureVerification.reason}`,
+        requestId,
+      );
     }
 
     const canProceed = await checkSimpleRateLimit(webhookId);
     if (!canProceed) {
+      await logUnauthorizedAttempt(
+        webhookId,
+        event.requestContext.http.sourceIp,
+        userAgent,
+        'Rate limit exceeded',
+      );
       return errorResponse(429, 'Rate limit exceeded', requestId);
     }
 
     const payload: WebhookPayload = JSON.parse(event.body || '{}');
 
-    // Validate required fields
     if (!payload.text && !payload.markdown) {
       return errorResponse(400, 'Message must contain text or markdown', requestId);
     }
@@ -66,13 +101,11 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
       return errorResponse(400, 'channel_id is required', requestId);
     }
 
-    // Verify channel exists and belongs to workspace
     const channelExists = await verifyChannel(payload.channel_id, webhook.workspace_id);
     if (!channelExists) {
       return errorResponse(400, 'Invalid channel_id for this workspace', requestId);
     }
 
-    // Extract channel_id and create clean payload
     const { channel_id, ...cleanPayload } = payload;
 
     const queueMessage: QueuedMessage = {
@@ -81,6 +114,7 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
       channelId: channel_id,
       payload: cleanPayload,
       requestId,
+      authenticatedUser: event.headers['x-pager-user-id'] || 'webhook-authenticated',
     };
 
     await sqs.sendMessage({
@@ -89,8 +123,13 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
       MessageGroupId: webhookId,
     });
 
-    await dbPool.query('INSERT INTO webhook_usage (webhook_id) VALUES ($1)', [webhookId]);
-    await dbPool.query('UPDATE webhooks SET last_used_at = now() WHERE id = $1', [webhookId]);
+    await Promise.all([
+      dbPool.query(
+        'INSERT INTO webhook_usage (webhook_id, source_ip, user_agent, authenticated_user) VALUES ($1, $2, $3, $4)',
+        [webhookId, event.requestContext.http.sourceIp, userAgent, queueMessage.authenticatedUser],
+      ),
+      dbPool.query('UPDATE webhooks SET last_used_at = now() WHERE id = $1', [webhookId]),
+    ]);
 
     return {
       statusCode: 200,
@@ -132,22 +171,40 @@ async function verifyChannel(channelId: string, workspaceId: string): Promise<bo
   return result.rows.length > 0;
 }
 
+interface SignatureVerification {
+  valid: boolean;
+  reason?: string;
+}
+
 function verifySignature(
   body: string,
   signature: string,
   timestamp: string,
   secret: string,
-): boolean {
+): SignatureVerification {
   const now = Math.floor(Date.now() / 1000);
   const requestTime = parseInt(timestamp);
-  if (Math.abs(now - requestTime) > 300) return false;
+
+  if (isNaN(requestTime)) {
+    return { valid: false, reason: 'Invalid timestamp format' };
+  }
+
+  if (Math.abs(now - requestTime) > 300) {
+    return { valid: false, reason: 'Request timestamp too old (>5 minutes)' };
+  }
+
+  if (!signature.startsWith('v0=')) {
+    return { valid: false, reason: 'Invalid signature format' };
+  }
 
   const baseString = `v0:${timestamp}:${body}`;
   const hmac = crypto.createHmac('sha256', secret);
   hmac.update(baseString);
   const expectedSignature = `v0=${hmac.digest('hex')}`;
 
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
+  const isValid = crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
+
+  return isValid ? { valid: true } : { valid: false, reason: 'Signature mismatch' };
 }
 
 async function checkSimpleRateLimit(webhookId: string): Promise<boolean> {
@@ -161,6 +218,24 @@ async function checkSimpleRateLimit(webhookId: string): Promise<boolean> {
   );
 
   return parseInt(result.rows[0].count) === 0;
+}
+
+async function logUnauthorizedAttempt(
+  webhookId: string,
+  sourceIp: string,
+  userAgent?: string,
+  reason?: string,
+): Promise<void> {
+  try {
+    await dbPool.query(
+      `INSERT INTO webhook_unauthorized_attempts
+       (webhook_id, source_ip, user_agent, failure_reason, attempted_at)
+       VALUES ($1, $2, $3, $4, now())`,
+      [webhookId, sourceIp, userAgent, reason],
+    );
+  } catch (error) {
+    console.error('Failed to log unauthorized attempt:', error);
+  }
 }
 
 function errorResponse(
