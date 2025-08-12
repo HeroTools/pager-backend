@@ -11,6 +11,9 @@ const webhookApiUrl = isLocal
   ? process.env.LOCAL_WEBHOOK_API_URL || 'http://localhost:3000'
   : process.env.WEBHOOK_API_URL;
 
+const ALLOWED_SOURCE_TYPES = ['custom', 'github', 'linear', 'jira'] as const;
+type SourceType = (typeof ALLOWED_SOURCE_TYPES)[number];
+
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     const method = event.httpMethod;
@@ -60,44 +63,121 @@ async function createWebhook(
     return errorResponse('Invalid JSON body', 400);
   }
 
-  if (!body.workspace_id || !body.name) {
+  const { workspace_id, name, source_type = 'custom', channel_id, signing_secret } = body;
+
+  if (!workspace_id || !name) {
     return errorResponse('workspace_id and name are required', 400);
   }
 
-  // Verify user is a member of the workspace
-  const memberCheck = await dbPool.query(
+  if (!ALLOWED_SOURCE_TYPES.includes(source_type)) {
+    return errorResponse('Invalid source_type. Must be one of: custom, github, linear, jira', 400);
+  }
+
+  // Verify user is an admin of the workspace
+  const adminCheck = await dbPool.query(
     `
-    SELECT id FROM workspace_members
-    WHERE workspace_id = $1 AND user_id = $2 AND is_deactivated = false
+    SELECT wm.role FROM workspace_members wm
+    WHERE wm.workspace_id = $1 AND wm.user_id = $2 AND wm.is_deactivated = false
   `,
-    [body.workspace_id, userId],
+    [workspace_id, userId],
   );
 
-  if (memberCheck.rows.length === 0) {
+  if (adminCheck.rows.length === 0) {
     return errorResponse('User is not a member of this workspace', 403);
   }
 
-  const secretToken = crypto.randomBytes(32).toString('hex');
-  const signingSecret = crypto.randomBytes(32).toString('hex');
+  if (adminCheck.rows[0].role !== 'admin') {
+    return errorResponse('Only workspace admins can create webhooks', 403);
+  }
+
+  // Validate channel_id requirements
+  if (source_type !== 'custom') {
+    if (!channel_id) {
+      return errorResponse('channel_id is required for service webhooks', 400);
+    }
+
+    // Verify channel exists in workspace
+    const channelCheck = await dbPool.query(
+      `SELECT id FROM channels WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL`,
+      [channel_id, workspace_id],
+    );
+
+    if (channelCheck.rows.length === 0) {
+      return errorResponse('Invalid channel_id for this workspace', 400);
+    }
+  } else if (channel_id) {
+    return errorResponse('Custom webhooks cannot have a pre-set channel_id', 400);
+  }
+
+  // Validate signing_secret requirements
+  if (source_type !== 'custom') {
+    if (!signing_secret) {
+      return errorResponse('signing_secret is required for service webhooks', 400);
+    }
+    // Basic validation - should be a non-empty string
+    if (typeof signing_secret !== 'string' || signing_secret.trim().length === 0) {
+      return errorResponse('signing_secret must be a non-empty string', 400);
+    }
+  }
+
+  // Check service webhook limits
+  if (source_type !== 'custom') {
+    const existingServiceWebhook = await dbPool.query(
+      `SELECT id FROM webhooks WHERE workspace_id = $1 AND source_type = $2`,
+      [workspace_id, source_type],
+    );
+
+    if (existingServiceWebhook.rows.length > 0) {
+      return errorResponse(`Only one ${source_type} webhook is allowed per workspace`, 409);
+    }
+  } else {
+    // Check custom webhook limits (max 2)
+    const existingCustomWebhooks = await dbPool.query(
+      `SELECT COUNT(*) as count FROM webhooks WHERE workspace_id = $1 AND source_type = 'custom'`,
+      [workspace_id],
+    );
+
+    if (parseInt(existingCustomWebhooks.rows[0].count) >= 2) {
+      return errorResponse('Maximum of 2 custom webhooks allowed per workspace', 409);
+    }
+  }
+
+  // Handle secrets based on webhook type
+  let finalSecretToken: string;
+  let finalSigningSecret: string;
+
+  if (source_type === 'custom') {
+    // For custom webhooks, generate both secrets
+    finalSecretToken = crypto.randomBytes(32).toString('hex');
+    finalSigningSecret = crypto.randomBytes(32).toString('hex');
+  } else {
+    // For service webhooks, use provided signing_secret and generate a secret_token for our own use
+    finalSecretToken = crypto.randomBytes(32).toString('hex');
+    finalSigningSecret = signing_secret.trim();
+  }
 
   const result = await dbPool.query(
     `
-    INSERT INTO webhooks (workspace_id, name, secret_token, signing_secret, created_by_user_id)
-    VALUES ($1, $2, $3, $4, $5)
+    INSERT INTO webhooks (workspace_id, name, source_type, channel_id, secret_token, signing_secret, created_by_user_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING id
   `,
-    [body.workspace_id, body.name, secretToken, signingSecret, userId],
+    [workspace_id, name, source_type, channel_id, finalSecretToken, finalSigningSecret, userId],
   );
 
   const newWebhookId = result.rows[0].id;
-  const url = `${webhookApiUrl}/${newWebhookId}`;
+
+  // Generate the appropriate URL based on source type
+  const url = `${webhookApiUrl}/${source_type}/${newWebhookId}`;
 
   return successResponse(
     {
       id: newWebhookId,
       url,
-      secret_token: secretToken,
-      signing_secret: signingSecret,
+      source_type,
+      channel_id,
+      secret_token: finalSecretToken,
+      signing_secret: finalSigningSecret,
     },
     201,
   );
@@ -131,16 +211,22 @@ async function listWebhooks(
     SELECT
       w.id,
       w.name,
+      w.source_type,
+      w.channel_id,
       w.is_active,
       w.last_used_at,
+      w.last_message_at,
+      w.message_count,
       w.created_at,
       u.name as created_by_name,
+      c.name as channel_name,
       COUNT(wu.id) as total_requests
     FROM webhooks w
     LEFT JOIN users u ON w.created_by_user_id = u.id
+    LEFT JOIN channels c ON w.channel_id = c.id
     LEFT JOIN webhook_usage wu ON w.id = wu.webhook_id
     WHERE w.workspace_id = $1
-    GROUP BY w.id, w.name, w.is_active, w.last_used_at, w.created_at, u.name
+    GROUP BY w.id, w.name, w.source_type, w.channel_id, w.is_active, w.last_used_at, w.last_message_at, w.message_count, w.created_at, u.name, c.name
     ORDER BY w.created_at DESC
   `,
     [workspaceId],
@@ -157,7 +243,7 @@ async function getWebhookDetails(
   // Verify user has access to this webhook
   const webhookCheck = await dbPool.query(
     `
-    SELECT w.id, w.workspace_id, w.secret_token, w.signing_secret
+    SELECT w.id, w.workspace_id, w.source_type, w.channel_id, w.secret_token, w.signing_secret
     FROM webhooks w
     JOIN workspace_members wm ON w.workspace_id = wm.workspace_id
     WHERE w.id = $1 AND wm.user_id = $2 AND wm.is_deactivated = false
@@ -170,11 +256,15 @@ async function getWebhookDetails(
   }
 
   const webhook = webhookCheck.rows[0];
-  const url = `${webhookApiUrl}/${webhookId}`;
+  const urlPath =
+    webhook.source_type === 'custom' ? webhook.id : `${webhook.source_type}/${webhook.id}`;
+  const url = `${webhookApiUrl}/${urlPath}`;
 
   return successResponse({
     id: webhook.id,
     url,
+    source_type: webhook.source_type,
+    channel_id: webhook.channel_id,
     secret_token: webhook.secret_token,
     signing_secret: webhook.signing_secret,
   });
@@ -192,10 +282,10 @@ async function updateWebhook(
     return errorResponse('Invalid JSON body', 400);
   }
 
-  // Verify user has access to this webhook
+  // Verify user has permission to edit this webhook (creator or admin)
   const webhookCheck = await dbPool.query(
     `
-    SELECT w.id, w.workspace_id
+    SELECT w.id, w.workspace_id, w.source_type, w.created_by_user_id, wm.role
     FROM webhooks w
     JOIN workspace_members wm ON w.workspace_id = wm.workspace_id
     WHERE w.id = $1 AND wm.user_id = $2 AND wm.is_deactivated = false
@@ -205,6 +295,14 @@ async function updateWebhook(
 
   if (webhookCheck.rows.length === 0) {
     return errorResponse('Webhook not found or access denied', 404);
+  }
+
+  const webhook = webhookCheck.rows[0];
+  const isCreator = webhook.created_by_user_id === userId;
+  const isAdmin = webhook.role === 'admin';
+
+  if (!isCreator && !isAdmin) {
+    return errorResponse('Only the webhook creator or workspace admin can edit webhooks', 403);
   }
 
   const updateFields: string[] = [];
@@ -221,6 +319,32 @@ async function updateWebhook(
     updateValues.push(!!body.is_active);
   }
 
+  if (body.channel_id !== undefined) {
+    // Validate channel change rules
+    if (webhook.source_type === 'custom' && body.channel_id !== null) {
+      return errorResponse('Custom webhooks cannot have a pre-set channel_id', 400);
+    }
+
+    if (webhook.source_type !== 'custom' && !body.channel_id) {
+      return errorResponse('Service webhooks must have a channel_id', 400);
+    }
+
+    if (body.channel_id) {
+      // Verify channel exists in workspace
+      const channelCheck = await dbPool.query(
+        `SELECT id FROM channels WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL`,
+        [body.channel_id, webhook.workspace_id],
+      );
+
+      if (channelCheck.rows.length === 0) {
+        return errorResponse('Invalid channel_id for this workspace', 400);
+      }
+    }
+
+    updateFields.push(`channel_id = $${paramCount++}`);
+    updateValues.push(body.channel_id);
+  }
+
   if (updateFields.length === 0) {
     return errorResponse('No valid fields to update', 400);
   }
@@ -233,7 +357,7 @@ async function updateWebhook(
     UPDATE webhooks
     SET ${updateFields.join(', ')}
     WHERE id = $${paramCount}
-    RETURNING id, name, is_active, last_used_at, created_at
+    RETURNING id, name, source_type, channel_id, is_active, last_used_at, created_at
   `,
     updateValues,
   );
@@ -246,10 +370,10 @@ async function updateWebhook(
 }
 
 async function deleteWebhook(webhookId: string, userId: string): Promise<APIGatewayProxyResult> {
-  // Verify user has access to this webhook
+  // Verify user has permission to delete this webhook (creator or admin)
   const webhookCheck = await dbPool.query(
     `
-    SELECT w.id, w.workspace_id
+    SELECT w.id, w.workspace_id, w.created_by_user_id, wm.role
     FROM webhooks w
     JOIN workspace_members wm ON w.workspace_id = wm.workspace_id
     WHERE w.id = $1 AND wm.user_id = $2 AND wm.is_deactivated = false
@@ -261,8 +385,20 @@ async function deleteWebhook(webhookId: string, userId: string): Promise<APIGate
     return errorResponse('Webhook not found or access denied', 404);
   }
 
+  const webhook = webhookCheck.rows[0];
+  const isCreator = webhook.created_by_user_id === userId;
+  const isAdmin = webhook.role === 'admin';
+
+  if (!isCreator && !isAdmin) {
+    return errorResponse('Only the webhook creator or workspace admin can delete webhooks', 403);
+  }
+
   // Delete webhook usage records first (foreign key constraint)
   await dbPool.query('DELETE FROM webhook_usage WHERE webhook_id = $1', [webhookId]);
+  await dbPool.query('DELETE FROM webhook_unauthorized_attempts WHERE webhook_id = $1', [
+    webhookId,
+  ]);
+  await dbPool.query('DELETE FROM webhook_processing_errors WHERE webhook_id = $1', [webhookId]);
 
   // Delete the webhook
   const result = await dbPool.query('DELETE FROM webhooks WHERE id = $1 RETURNING id', [webhookId]);
