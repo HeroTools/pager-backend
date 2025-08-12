@@ -8,6 +8,7 @@ import { withCors } from '../../common/utils/cors';
 import dbPool from '../../common/utils/create-db-pool';
 import { errorResponse, successResponse } from '../../common/utils/response';
 import { broadcastMessage } from '../helpers/broadcasting';
+import { processMentions } from '../helpers/process-mentions';
 import { deltaToMarkdown, deltaToPlainText } from '../helpers/quill-delta-converters';
 import { CompleteMessage } from '../types';
 
@@ -289,6 +290,12 @@ export const handler = withCors(
       }
 
       const completeMessage: CompleteMessage = completeRows[0];
+      let mentionedWorkspaceMemberIds: string[] = await processMentions(
+        client,
+        messageId,
+        workspaceId,
+        deltaOps,
+      );
 
       await client.query('COMMIT');
 
@@ -327,6 +334,7 @@ export const handler = withCors(
         parentMessageId: completeMessage.parent_message_id || undefined,
         threadId: completeMessage.thread_id || undefined,
         senderName: completeMessage.user_name,
+        mentionedWorkspaceMemberIds: mentionedWorkspaceMemberIds,
       };
 
       console.log('notificationPayload:', notificationPayload);
