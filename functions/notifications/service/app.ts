@@ -2,9 +2,8 @@ import { Handler } from 'aws-lambda';
 import { PoolClient } from 'pg';
 
 import dbPool from '../../../common/utils/create-db-pool';
-import { Notification, NotificationEvent } from '../types';
+import { CreatedNotification, Notification, NotificationEvent } from '../types';
 import { broadcastNotification } from './helpers/broadcasting';
-import { extractAndResolveMentions } from './helpers/mentions';
 import {
   createChannelMessageNotifications,
   createDirectMessageNotifications,
@@ -18,6 +17,7 @@ async function processMessageNotifications(event: NotificationEvent): Promise<vo
 
   try {
     client = await dbPool.connect();
+    await client.query('BEGIN');
 
     const notifications: Notification[] = [];
     const {
@@ -30,11 +30,10 @@ async function processMessageNotifications(event: NotificationEvent): Promise<vo
       parentMessageId,
       threadId,
       senderName,
+      mentionedWorkspaceMemberIds,
     } = event;
 
-    console.log('event:', event);
-
-    // 1. Handle channel messages (notify all members for now)
+    // 1. Handle channel messages (notify all members)
     if (channelId) {
       const channelNotifications = await createChannelMessageNotifications(
         client,
@@ -48,12 +47,11 @@ async function processMessageNotifications(event: NotificationEvent): Promise<vo
       notifications.push(...channelNotifications);
     }
 
-    // 2. Handle mentions (for additional context in notifications)
-    const mentionedUserIds = await extractAndResolveMentions(client, messageText, workspaceId);
-    if (mentionedUserIds.length > 0) {
+    // 2. Handle mentions (upgrade existing notifications or create new ones)
+    if (mentionedWorkspaceMemberIds.length > 0) {
       const mentionNotifications = await createMentionNotifications(
         client,
-        mentionedUserIds,
+        mentionedWorkspaceMemberIds,
         senderWorkspaceMemberId,
         workspaceId,
         messageId,
@@ -99,17 +97,41 @@ async function processMessageNotifications(event: NotificationEvent): Promise<vo
       notifications.push(...threadNotifications);
     }
 
-    // 5. Insert and broadcast notifications
+    // 5. Insert notifications within transaction
+    let createdNotifications: CreatedNotification[] = [];
     if (notifications.length > 0) {
-      const createdNotifications = await insertNotifications(client, notifications);
+      createdNotifications = await insertNotifications(client, notifications);
       console.log(`Created ${notifications.length} notifications for message ${messageId}`);
+    }
 
-      // 6. Broadcast notifications in real-time
-      await Promise.allSettled(
+    await client.query('COMMIT');
+
+    // 6. Broadcast notifications AFTER commit (outside transaction)
+    if (createdNotifications.length > 0) {
+      const broadcastResults = await Promise.allSettled(
         createdNotifications.map((notification) => broadcastNotification(notification)),
       );
+
+      const failures = broadcastResults.filter((result) => result.status === 'rejected');
+      if (failures.length > 0) {
+        console.error(
+          `Failed to broadcast ${failures.length}/${createdNotifications.length} notifications`,
+        );
+        failures.forEach((failure, index) => {
+          if (failure.status === 'rejected') {
+            console.error(`Broadcast failure ${index + 1}:`, failure.reason);
+          }
+        });
+      }
     }
   } catch (error) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Error during rollback:', rollbackError);
+      }
+    }
     console.error('Error processing notifications:', error);
     throw error;
   } finally {
