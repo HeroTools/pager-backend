@@ -112,15 +112,27 @@ export const handler = withCors(
         return errorResponse('One or more members not found or deactivated', 404);
       }
 
-      // Check for existing conversation
+      // Check for existing conversation (excluding AI agent conversations)
       const findSql = `
-        WITH candidates AS (
+        WITH member_conversations AS (
+          SELECT DISTINCT cm.conversation_id
+          FROM conversation_members cm
+          WHERE cm.workspace_member_id = ANY($2)
+            AND cm.left_at IS NULL
+        ),
+        ai_conversations AS (
+          SELECT DISTINCT conversation_id
+          FROM conversation_members
+          WHERE ai_agent_id IS NOT NULL
+        ),
+        candidates AS (
           SELECT cm.conversation_id
           FROM conversation_members cm
           JOIN conversations c ON c.id = cm.conversation_id
           WHERE c.workspace_id = $1
             AND cm.left_at IS NULL
             AND cm.workspace_member_id = ANY($2)
+            AND cm.conversation_id NOT IN (SELECT conversation_id FROM ai_conversations)
           GROUP BY cm.conversation_id
           HAVING COUNT(DISTINCT cm.workspace_member_id) = $3
         )
