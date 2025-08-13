@@ -1,9 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import { getMember } from '../../common/helpers/get-member';
-import { withCors } from '../../common/utils/cors';
-import { errorResponse, successResponse } from '../../common/utils/response';
-import { supabase } from '../../common/utils/supabase-client';
+import { getUserIdFromToken } from '../../../common/helpers/auth';
+import { getMember } from '../../../common/helpers/get-member';
+import { withCors } from '../../../common/utils/cors';
+import { errorResponse, successResponse } from '../../../common/utils/response';
+import { supabase } from '../../../common/utils/supabase-client';
 
 interface ConversationMember {
   id: string;

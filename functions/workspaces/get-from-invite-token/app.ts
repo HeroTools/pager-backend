@@ -1,8 +1,8 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
-import dbPool from '../../common/utils/create-db-pool';
-import { errorResponse, successResponse } from '../../common/utils/response';
-import { withCors } from '../../common/utils/cors';
+import { withCors } from '../../../common/utils/cors';
+import dbPool from '../../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../../common/utils/response';
 
 interface WorkspaceInfo {
   name: string;
@@ -28,7 +28,7 @@ export const handler = withCors(
       client = await dbPool.connect();
 
       const query = `
-      SELECT 
+      SELECT
         w.name,
         w.image,
         w.is_active

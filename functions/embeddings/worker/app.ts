@@ -1,7 +1,7 @@
 import { SQSEvent, SQSHandler } from 'aws-lambda';
 import OpenAI from 'openai';
-import { successResponse } from '../../common/utils/response';
-import { supabase } from '../../common/utils/supabase-client';
+import { successResponse } from '../../../common/utils/response';
+import { supabase } from '../../../common/utils/supabase-client';
 
 function getEnv<T>(key: string, parser: (v: string) => T, defaultValue?: T): T {
   const raw = process.env[key];

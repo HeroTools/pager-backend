@@ -1,11 +1,11 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
-import dbPool from '../../common/utils/create-db-pool';
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import { errorResponse, successResponse } from '../../common/utils/response';
-import { getWorkspaceMember } from '../../common/helpers/get-member';
-import { withCors } from '../../common/utils/cors';
+import { getUserIdFromToken } from '../../../common/helpers/auth';
+import { getWorkspaceMember } from '../../../common/helpers/get-member';
+import { withCors } from '../../../common/utils/cors';
+import dbPool from '../../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../../common/utils/response';
 
 const QueryParamsSchema = z.object({
   limit: z
@@ -80,7 +80,7 @@ export const handler = withCors(
       }
 
       const notificationsQuery = `
-            SELECT 
+            SELECT
                 n.id,
                 n.workspace_id,
                 n.type,

@@ -1,4 +1,4 @@
-import { supabase } from '../../../common/utils/supabase-client';
+import { supabase } from '../../../../common/utils/supabase-client';
 
 export const broadcastMessageDelete = async (
   workspaceId: string,
