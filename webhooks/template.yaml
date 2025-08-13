@@ -12,6 +12,12 @@ Parameters:
     Default: pager-webhooks
     AllowedValues: [pager-webhooks]
 
+  MainStackName:
+    Type: String
+    Default: unowned-dev
+    AllowedValues: [unowned, unowned-dev]
+    Description: 'Name of the main stack containing the secrets'
+
   DeploymentVersion:
     Type: String
     Default: '1.0.0'
@@ -25,14 +31,14 @@ Globals:
     Environment:
       Variables:
         DEPLOYMENT_VERSION: !Ref DeploymentVersion
-        SUPABASE_ANON_KEY: '***REDACTED_SUPABASE_ANON_KEY***'
-        SUPABASE_SERVICE_ROLE_KEY: '***REDACTED_SUPABASE_SERVICE_KEY***'
-        SUPABASE_URL: '***REDACTED_SUPABASE_URL***'
-        PG_USER: '***REDACTED_PG_USER***'
-        PG_HOST: '***REDACTED_PG_HOST***'
-        PG_DATABASE: 'postgres'
-        PG_PASSWORD: '***REDACTED_PG_PASSWORD***'
-        PG_PORT: '6543'
+        SUPABASE_URL: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/supabase-url:SecretString}}'
+        SUPABASE_ANON_KEY: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/supabase-anon-key:SecretString}}'
+        SUPABASE_SERVICE_ROLE_KEY: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/supabase-service-role-key:SecretString}}'
+        PG_USER: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/pg-user:SecretString}}'
+        PG_HOST: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/pg-host:SecretString}}'
+        PG_DATABASE: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/pg-database:SecretString}}'
+        PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/pg-password:SecretString}}'
+        PG_PORT: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/pg-port:SecretString}}'
 
 Resources:
   WebhookApi:

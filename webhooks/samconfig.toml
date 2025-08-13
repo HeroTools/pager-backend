@@ -23,7 +23,7 @@ region = "us-east-2"
 image_repositories = []
 disable_rollback = false
 resolve_image_repos = true
-parameter_overrides = "Environment=prod StackName=pager-webhooks"
+parameter_overrides = "Environment=prod StackName=pager-webhooks MainStackName=unowned"
 
 [default.package.parameters]
 resolve_s3 = true
@@ -48,5 +48,5 @@ resolve_image_repos = true
 stack_name = "pager-webhooks"
 s3_prefix = "pager-webhooks"
 region = "us-east-2"
-parameter_overrides = "Environment=\"dev\" StackName=\"pager-webhooks\" DeploymentVersion=\"1.0.0\""
+parameter_overrides = "Environment=\"dev\" StackName=\"pager-webhooks\" MainStackName=\"unowned-dev\" DeploymentVersion=\"1.0.0\""
 profile = "unowned-prod"

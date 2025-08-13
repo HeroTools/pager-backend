@@ -5,8 +5,11 @@ import * as yaml from 'js-yaml';
 import { join } from 'path';
 
 const environment = process.argv[2] || 'dev';
+const stack = process.argv[3]; // Optional stack parameter (e.g., 'webhooks')
 const configPath = join(process.cwd(), 'config', 'parameters.json');
-const templatePath = join(process.cwd(), 'template.yaml');
+const templatePath = stack 
+  ? join(process.cwd(), stack, 'template.yaml')
+  : join(process.cwd(), 'template.yaml');
 
 if (!existsSync(configPath)) {
   console.error(
@@ -82,8 +85,9 @@ functions.forEach((funcName) => {
   envJson[funcName] = { ...envVars };
 });
 
-writeFileSync('env.json', JSON.stringify(envJson, null, 2));
-console.log(`✅ Generated env.json from ${environment} parameters`);
+const outputPath = stack ? join(stack, 'env.json') : 'env.json';
+writeFileSync(outputPath, JSON.stringify(envJson, null, 2));
+console.log(`✅ Generated ${outputPath} from ${environment} parameters`);
 console.log(`📋 Environment variables set for ${functions.length} functions`);
 
 // Show what was generated (hide sensitive values)
