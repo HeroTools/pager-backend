@@ -1,5 +1,5 @@
 import { Agent, handoff, setDefaultOpenAIClient } from '@openai/agents';
-import { openai } from '../../common/utils/create-embedding';
+import { openai } from '../../../common/utils/create-embedding';
 
 import { createStructuredSummary } from './tools/create-structured-summary';
 import { fetchTimeRangeMessages } from './tools/fetch-time-range-messages';

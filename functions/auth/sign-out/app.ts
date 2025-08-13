@@ -1,7 +1,7 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { createClient } from '@supabase/supabase-js';
-import { successResponse, errorResponse } from '../../common/utils/response';
-import { withCors } from '../../common/utils/cors';
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { withCors } from '../../../common/utils/cors';
+import { errorResponse, successResponse } from '../../../common/utils/response';
 
 export const handler = withCors(
   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {

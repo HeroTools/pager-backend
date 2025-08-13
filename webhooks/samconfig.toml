@@ -1,0 +1,52 @@
+version = 0.1
+
+[default]
+[default.global.parameters]
+stack_name = "pager-webhooks"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+
+[default.validate.parameters]
+lint = true
+
+[prod]
+[prod.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+resolve_s3 = true
+stack_name = "pager-webhooks"
+s3_prefix = "pager-webhooks"
+region = "us-east-2"
+image_repositories = []
+disable_rollback = false
+resolve_image_repos = true
+parameter_overrides = "Environment=prod StackName=pager-webhooks"
+
+[default.package.parameters]
+resolve_s3 = true
+
+[default.sync.parameters]
+watch = true
+
+[default.local_start_api.parameters]
+warm_containers = "EAGER"
+
+[default.local_start_lambda.parameters]
+warm_containers = "EAGER"
+
+[dev]
+[dev.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+image_repositories = []
+disable_rollback = false
+resolve_image_repos = true
+stack_name = "pager-webhooks"
+s3_prefix = "pager-webhooks"
+region = "us-east-2"
+parameter_overrides = "Environment=\"dev\" StackName=\"pager-webhooks\" DeploymentVersion=\"1.0.0\""
+profile = "unowned-prod"

@@ -1,10 +1,10 @@
 import { InvocationType, InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import { getChannelMember } from '../../common/helpers/get-member';
-import { withCors } from '../../common/utils/cors';
-import { errorResponse, successResponse } from '../../common/utils/response';
-import { supabase } from '../../common/utils/supabase-client';
+import { getUserIdFromToken } from '../../../common/helpers/auth';
+import { getChannelMember } from '../../../common/helpers/get-member';
+import { withCors } from '../../../common/utils/cors';
+import { errorResponse, successResponse } from '../../../common/utils/response';
+import { supabase } from '../../../common/utils/supabase-client';
 
 const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-east-2' });
 
