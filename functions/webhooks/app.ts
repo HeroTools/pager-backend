@@ -11,7 +11,7 @@ const webhookApiUrl = isLocal
   ? process.env.LOCAL_WEBHOOK_API_URL || 'http://localhost:3000'
   : process.env.WEBHOOK_API_URL;
 
-const ALLOWED_SOURCE_TYPES = ['custom', 'github', 'linear', 'jira'] as const;
+const ALLOWED_SOURCE_TYPES = ['custom', 'github', 'linear', 'jira', 'stripe'] as const;
 type SourceType = (typeof ALLOWED_SOURCE_TYPES)[number];
 
 export const handler = withCors(
@@ -70,7 +70,10 @@ async function createWebhook(
   }
 
   if (!ALLOWED_SOURCE_TYPES.includes(source_type)) {
-    return errorResponse('Invalid source_type. Must be one of: custom, github, linear, jira', 400);
+    return errorResponse(
+      'Invalid source_type. Must be one of: custom, github, linear, jira, stripe',
+      400,
+    );
   }
 
   // Verify user is an admin of the workspace
@@ -111,12 +114,26 @@ async function createWebhook(
 
   // Validate signing_secret requirements
   if (source_type !== 'custom') {
-    if (!signing_secret) {
+    if (!signing_secret && source_type !== 'stripe') {
       return errorResponse('signing_secret is required for service webhooks', 400);
     }
-    // Basic validation - should be a non-empty string
-    if (typeof signing_secret !== 'string' || signing_secret.trim().length === 0) {
+
+    // Only validate signing_secret format if it's provided
+    if (
+      signing_secret &&
+      (typeof signing_secret !== 'string' || signing_secret.trim().length === 0)
+    ) {
       return errorResponse('signing_secret must be a non-empty string', 400);
+    }
+
+    // Stripe-specific validation for webhook endpoint secret
+    if (source_type === 'stripe') {
+      if (signing_secret && !signing_secret.startsWith('whsec_')) {
+        return errorResponse(
+          'Stripe signing_secret must be a webhook endpoint secret starting with "whsec_"',
+          400,
+        );
+      }
     }
   }
 
@@ -127,24 +144,24 @@ async function createWebhook(
       [workspace_id, source_type],
     );
 
-    if (existingServiceWebhook.rows.length > 0) {
-      return errorResponse(`Only one ${source_type} webhook is allowed per workspace`, 409);
+    if (existingServiceWebhook.rows.length > 5) {
+      return errorResponse(`Only 5 ${source_type} webhooks are allowed per workspace`, 409);
     }
   } else {
-    // Check custom webhook limits (max 2)
+    // Check custom webhook limits (max 5)
     const existingCustomWebhooks = await dbPool.query(
       `SELECT COUNT(*) as count FROM webhooks WHERE workspace_id = $1 AND source_type = 'custom'`,
       [workspace_id],
     );
 
-    if (parseInt(existingCustomWebhooks.rows[0].count) >= 2) {
-      return errorResponse('Maximum of 2 custom webhooks allowed per workspace', 409);
+    if (parseInt(existingCustomWebhooks.rows[0].count) >= 5) {
+      return errorResponse('Maximum of 5 custom webhooks allowed per workspace', 409);
     }
   }
 
   // Handle secrets based on webhook type
   let finalSecretToken: string;
-  let finalSigningSecret: string;
+  let finalSigningSecret: string | null;
 
   if (source_type === 'custom') {
     // For custom webhooks, generate both secrets
@@ -153,7 +170,7 @@ async function createWebhook(
   } else {
     // For service webhooks, use provided signing_secret and generate a secret_token for our own use
     finalSecretToken = crypto.randomBytes(32).toString('hex');
-    finalSigningSecret = signing_secret.trim();
+    finalSigningSecret = signing_secret ? signing_secret.trim() : null;
   }
 
   const result = await dbPool.query(
@@ -218,6 +235,7 @@ async function listWebhooks(
       w.last_message_at,
       w.message_count,
       w.created_at,
+      w.signing_secret,
       u.name as created_by_name,
       c.name as channel_name,
       COUNT(wu.id) as total_requests
@@ -226,13 +244,20 @@ async function listWebhooks(
     LEFT JOIN channels c ON w.channel_id = c.id
     LEFT JOIN webhook_usage wu ON w.id = wu.webhook_id
     WHERE w.workspace_id = $1
-    GROUP BY w.id, w.name, w.source_type, w.channel_id, w.is_active, w.last_used_at, w.last_message_at, w.message_count, w.created_at, u.name, c.name
+    GROUP BY w.id, w.name, w.source_type, w.channel_id, w.is_active, w.last_used_at, w.last_message_at, w.message_count, w.created_at, w.signing_secret, u.name, c.name
     ORDER BY w.created_at DESC
   `,
     [workspaceId],
   );
 
-  return successResponse({ webhooks: result.rows });
+  // Add webhook URLs to each webhook
+  const webhooksWithUrls = result.rows.map(webhook => ({
+    ...webhook,
+    url: `${webhookApiUrl}/${webhook.source_type}/${webhook.id}`,
+    total_requests: parseInt(webhook.total_requests) || 0,
+  }));
+
+  return successResponse({ webhooks: webhooksWithUrls });
 }
 
 async function getWebhookDetails(
@@ -256,9 +281,7 @@ async function getWebhookDetails(
   }
 
   const webhook = webhookCheck.rows[0];
-  const urlPath =
-    webhook.source_type === 'custom' ? webhook.id : `${webhook.source_type}/${webhook.id}`;
-  const url = `${webhookApiUrl}/${urlPath}`;
+  const url = `${webhookApiUrl}/${webhook.source_type}/${webhook.id}`;
 
   return successResponse({
     id: webhook.id,
@@ -345,6 +368,23 @@ async function updateWebhook(
     updateValues.push(body.channel_id);
   }
 
+  if (body.signing_secret !== undefined) {
+    // Validate Stripe signing secret format if being updated
+    if (
+      webhook.source_type === 'stripe' &&
+      body.signing_secret &&
+      !body.signing_secret.startsWith('whsec_')
+    ) {
+      return errorResponse(
+        'Stripe signing_secret must be a webhook endpoint secret starting with "whsec_"',
+        400,
+      );
+    }
+
+    updateFields.push(`signing_secret = $${paramCount++}`);
+    updateValues.push(body.signing_secret);
+  }
+
   if (updateFields.length === 0) {
     return errorResponse('No valid fields to update', 400);
   }
@@ -357,7 +397,8 @@ async function updateWebhook(
     UPDATE webhooks
     SET ${updateFields.join(', ')}
     WHERE id = $${paramCount}
-    RETURNING id, name, source_type, channel_id, is_active, last_used_at, created_at
+    RETURNING id, name, source_type, channel_id, is_active, last_used_at, last_message_at, 
+              message_count, created_at, updated_at, secret_token, signing_secret, created_by_user_id
   `,
     updateValues,
   );
@@ -366,7 +407,37 @@ async function updateWebhook(
     return errorResponse('Webhook not found', 404);
   }
 
-  return successResponse(result.rows[0]);
+  const updatedWebhook = result.rows[0];
+  
+  // Get additional info for complete response
+  const detailsResult = await dbPool.query(
+    `
+    SELECT 
+      u.name as created_by_name,
+      c.name as channel_name,
+      COUNT(wu.id) as total_requests
+    FROM webhooks w
+    LEFT JOIN users u ON w.created_by_user_id = u.id
+    LEFT JOIN channels c ON w.channel_id = c.id
+    LEFT JOIN webhook_usage wu ON w.id = wu.webhook_id
+    WHERE w.id = $1
+    GROUP BY u.name, c.name
+  `,
+    [webhookId],
+  );
+
+  const details = detailsResult.rows[0] || { created_by_name: null, channel_name: null, total_requests: 0 };
+  
+  // Generate the webhook URL
+  const url = `${webhookApiUrl}/${updatedWebhook.source_type}/${updatedWebhook.id}`;
+
+  return successResponse({
+    ...updatedWebhook,
+    url,
+    created_by_name: details.created_by_name,
+    channel_name: details.channel_name,
+    total_requests: parseInt(details.total_requests) || 0,
+  });
 }
 
 async function deleteWebhook(webhookId: string, userId: string): Promise<APIGatewayProxyResult> {
