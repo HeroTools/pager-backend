@@ -27,7 +27,7 @@ Mappings:
       url: 'https://app.pager.team'
   AllowOrigins:
     dev:
-      origins: http://localhost:3000,https://pager-dev.vercel.app,https://pager-frontend-git-skeleton-loaders-zachs-projects-3b56783e.vercel.app
+      origins: http://localhost:3000,https://pager-dev.vercel.app
     prod:
       origins: https://app.pager.team
 
@@ -52,7 +52,7 @@ Globals:
         PG_DATABASE: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-database:SecretString}}'
         PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-password:SecretString}}'
         PG_PORT: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-port:SecretString}}'
-        LOCAL_WEBHOOK_API_URL: !Sub 'https://lnys9cfmua.execute-api.us-east-2.amazonaws.com/${Environment}/webhooks'
+        LOCAL_WEBHOOK_API_URL: !Sub 'https://f2b3turp1j.execute-api.us-east-2.amazonaws.com/${Environment}/webhooks'
         VERCEL_PROJECTS: pager-frontend
         ALLOW_VERCEL_PREVIEWS: true
         FRONTEND_URL: !FindInMap
@@ -423,6 +423,15 @@ Resources:
         Target: es2024
         EntryPoints:
           - service/app.ts
+
+  # SSM Parameter for Notification Service Function ARN
+  NotificationServiceFunctionArnParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackName}/${Environment}/notification-service-function-arn'
+      Type: String
+      Value: !GetAtt NotificationServiceFunction.Arn
+      Description: 'ARN of the notification service function for cross-stack reference'
 
   # MARK AS READ
   MarkAsReadFunction:
@@ -1748,7 +1757,7 @@ Resources:
       Handler: app.handler
       Environment:
         Variables:
-          WEBHOOK_API_URL: !ImportValue webhook-api-url
+          WEBHOOK_API_URL: !Sub '{{resolve:ssm:/pager-webhooks-${Environment}/${Environment}/webhook-api-url}}'
       Events:
         ApiEventList:
           Type: Api

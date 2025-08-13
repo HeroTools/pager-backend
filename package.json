@@ -38,7 +38,12 @@
     "deploy:prod:setup": "npm run generate:env prod && npm run setup:aws prod && npm run build && sam deploy --config-env prod --profile unowned-prod",
     "deploy:prod": "npm run build && sam deploy --config-env prod --profile unowned-prod",
     "deploy:prod:force": "npm run build && sam deploy --config-env prod --profile unowned-prod --parameter-overrides DeploymentVersion=$(date +%s)",
-    "deploy:prod:version": "npm run build && sam deploy --config-env prod --profile unowned-prod --parameter-overrides DeploymentVersion=${npm_config_version:-$(date +%s)}"
+    "deploy:prod:version": "npm run build && sam deploy --config-env prod --profile unowned-prod --parameter-overrides DeploymentVersion=${npm_config_version:-$(date +%s)}",
+    "webhooks:build": "cd webhooks && sam build",
+    "webhooks:deploy:dev": "cd webhooks && sam build && sam deploy --config-env dev --parameter-overrides EnableNotifications=true",
+    "webhooks:deploy:dev:setup": "cd webhooks && sam build && sam deploy --config-env dev --parameter-overrides EnableNotifications=false",
+    "webhooks:deploy:prod": "cd webhooks && sam build && sam deploy --config-env prod --parameter-overrides EnableNotifications=true Environment=prod StackName=pager-webhooks-prod MainStackName=unowned",
+    "webhooks:deploy:prod:setup": "cd webhooks && sam build && sam deploy --config-env prod --parameter-overrides EnableNotifications=false Environment=prod StackName=pager-webhooks-prod MainStackName=unowned"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",
