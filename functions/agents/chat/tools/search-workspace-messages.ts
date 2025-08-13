@@ -2,8 +2,8 @@
 import { tool } from '@openai/agents';
 import { registerTypes, toSql } from 'pgvector/pg';
 import { z } from 'zod';
-import dbPool from '../../../common/utils/create-db-pool';
-import { createEmbedding } from '../../../common/utils/create-embedding';
+import dbPool from '../../../../common/utils/create-db-pool';
+import { createEmbedding } from '../../../../common/utils/create-embedding';
 import { summarizingProcessor } from '../helpers/efficient-message-processor';
 
 export const searchWorkspaceMessages = tool({

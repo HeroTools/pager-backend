@@ -1,11 +1,11 @@
 import { SQSClient, SendMessageBatchCommand } from '@aws-sdk/client-sqs';
 import { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import { getWorkspaceMember } from '../../common/helpers/get-member';
-import { withCors } from '../../common/utils/cors';
-import dbPool from '../../common/utils/create-db-pool';
-import { errorResponse, successResponse } from '../../common/utils/response';
+import { getUserIdFromToken } from '../../../common/helpers/auth';
+import { getWorkspaceMember } from '../../../common/helpers/get-member';
+import { withCors } from '../../../common/utils/cors';
+import dbPool from '../../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../../common/utils/response';
 import { MigrationJob } from './types';
 
 const sqs = new SQSClient({ region: process.env.AWS_REGION || 'us-east-2' });

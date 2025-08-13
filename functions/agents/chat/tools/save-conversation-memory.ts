@@ -1,6 +1,6 @@
 import { tool } from '@openai/agents';
 import { z } from 'zod';
-import dbPool from '../../../common/utils/create-db-pool';
+import dbPool from '../../../../common/utils/create-db-pool';
 
 export const saveConversationMemory = tool({
   name: 'save_conversation_memory',

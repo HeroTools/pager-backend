@@ -1,9 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import { withCors } from '../../common/utils/cors';
-import dbPool from '../../common/utils/create-db-pool';
-import { errorResponse, successResponse } from '../../common/utils/response';
+import { getUserIdFromToken } from '../../../common/helpers/auth';
+import { withCors } from '../../../common/utils/cors';
+import dbPool from '../../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../../common/utils/response';
 import { isNameAllowed } from '../helpers';
 
 interface CreateWorkspaceBody {

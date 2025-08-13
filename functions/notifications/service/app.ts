@@ -1,7 +1,7 @@
 import { Handler } from 'aws-lambda';
 import { PoolClient } from 'pg';
 
-import dbPool from '../../common/utils/create-db-pool';
+import dbPool from '../../../common/utils/create-db-pool';
 import { CreatedNotification, Notification, NotificationEvent } from '../types';
 import { broadcastNotification } from './helpers/broadcasting';
 import {

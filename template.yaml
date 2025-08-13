@@ -51,6 +51,7 @@ Globals:
         PG_DATABASE: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-database:SecretString}}'
         PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-password:SecretString}}'
         PG_PORT: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-port:SecretString}}'
+        LOCAL_WEBHOOK_API_URL: !Sub 'https://lnys9cfmua.execute-api.us-east-2.amazonaws.com/${Environment}/webhooks'
         VERCEL_PROJECTS: pager-frontend
         ALLOW_VERCEL_PREVIEWS: true
         FRONTEND_URL: !FindInMap
@@ -1738,6 +1739,53 @@ Resources:
         Target: es2024
         EntryPoints:
           - status/app.ts
+
+  WebhookManagementFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/webhooks
+      Handler: app.handler
+      Environment:
+        Variables:
+          WEBHOOK_API_URL: !ImportValue webhook-api-url
+      Events:
+        ApiEventList:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/webhooks
+            Method: GET
+            RestApiId: !Ref MainApi
+        ApiEventDetails:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/webhooks/{webhookId}
+            Method: GET
+            RestApiId: !Ref MainApi
+        ApiEventUpdate:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/webhooks/{webhookId}
+            Method: PATCH
+            RestApiId: !Ref MainApi
+        ApiEventDelete:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/webhooks/{webhookId}
+            Method: DELETE
+            RestApiId: !Ref MainApi
+        ApiEventCreate:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/webhooks
+            Method: POST
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - app.ts
 
 Outputs:
   # Function URL for streaming
