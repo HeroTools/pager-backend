@@ -184,6 +184,36 @@ Resources:
         EntryPoints:
           - jira-webhook-handler.ts
 
+  # Stripe Webhook Handler
+  StripeWebhookHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'pager-stripe-webhook-handler-${Environment}'
+      CodeUri: src/handlers
+      Handler: stripe-webhook-handler.handler
+      Environment:
+        Variables:
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          WEBHOOK_QUEUE_URL: !Ref WebhookQueue
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt WebhookQueue.QueueName
+      Events:
+        StripeWebhookPost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref WebhookApi
+            Path: /webhooks/stripe/{webhookId}
+            Method: POST
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - stripe-webhook-handler.ts
+
   MessageProcessor:
     Type: AWS::Serverless::Function
     Properties:
