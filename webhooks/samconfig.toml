@@ -17,13 +17,13 @@ lint = true
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = false
 resolve_s3 = true
-stack_name = "pager-webhooks"
-s3_prefix = "pager-webhooks"
+stack_name = "pager-webhooks-prod"
+s3_prefix = "pager-webhooks-prod"
 region = "us-east-2"
 image_repositories = []
 disable_rollback = false
 resolve_image_repos = true
-parameter_overrides = "Environment=prod StackName=pager-webhooks MainStackName=unowned"
+parameter_overrides = "Environment=prod StackName=pager-webhooks-prod MainStackName=unowned"
 
 [default.package.parameters]
 resolve_s3 = true
@@ -40,7 +40,7 @@ warm_containers = "EAGER"
 [dev]
 [dev.deploy.parameters]
 capabilities = "CAPABILITY_IAM"
-confirm_changeset = true
+confirm_changeset = false
 resolve_s3 = true
 image_repositories = []
 disable_rollback = false
@@ -48,5 +48,5 @@ resolve_image_repos = true
 stack_name = "pager-webhooks"
 s3_prefix = "pager-webhooks"
 region = "us-east-2"
-parameter_overrides = "Environment=\"dev\" StackName=\"pager-webhooks\" MainStackName=\"unowned-dev\" DeploymentVersion=\"1.0.0\""
+parameter_overrides = "Environment=dev StackName=pager-webhooks MainStackName=unowned-dev DeploymentVersion=1.0.0"
 profile = "unowned-prod"

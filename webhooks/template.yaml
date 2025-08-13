@@ -10,7 +10,7 @@ Parameters:
   StackName:
     Type: String
     Default: pager-webhooks
-    AllowedValues: [pager-webhooks]
+    AllowedValues: [pager-webhooks-prod, pager-webhooks]
 
   MainStackName:
     Type: String

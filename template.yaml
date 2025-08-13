@@ -41,6 +41,7 @@ Globals:
     Environment:
       Variables:
         DEPLOYMENT_VERSION: !Ref DeploymentVersion
+        ENVIRONMENT: !Ref Environment
         OPENAI_API_KEY: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/openai-api-key:SecretString}}'
         GOOGLE_CLIENT_ID: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/google-client-id:SecretString}}'
         SUPABASE_URL: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/supabase-url:SecretString}}'
