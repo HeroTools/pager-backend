@@ -1,11 +1,11 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
-import dbPool from '../../common/utils/create-db-pool';
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import { successResponse, errorResponse } from '../../common/utils/response';
-import { MessageWithUser } from '../../common/types';
-import { withCors } from '../../common/utils/cors';
+import { getUserIdFromToken } from '../../../common/helpers/auth';
+import { MessageWithUser } from '../../../common/types';
+import { withCors } from '../../../common/utils/cors';
+import dbPool from '../../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../../common/utils/response';
 
 const PathParamsSchema = z.object({
   messageId: z.string().uuid('messageId is required'),
@@ -61,27 +61,27 @@ export const handler = withCors(
 
       const mainQuery = `
             WITH cursor_timestamp AS (
-                SELECT created_at 
-                FROM messages 
+                SELECT created_at
+                FROM messages
                 WHERE id = $3
             ),
             access_validation AS (
-                SELECT CASE 
+                SELECT CASE
                     WHEN $9 = 'channel' THEN (
-                        SELECT COUNT(*) > 0 
+                        SELECT COUNT(*) > 0
                         FROM channel_members cm
                         JOIN workspace_members wm ON cm.workspace_member_id = wm.id
                         WHERE cm.channel_id = $10
-                            AND wm.user_id = $2 
+                            AND wm.user_id = $2
                             AND wm.is_deactivated = false
                             AND cm.left_at IS NULL
                     )
                     WHEN $9 = 'conversation' THEN (
-                        SELECT COUNT(*) > 0 
+                        SELECT COUNT(*) > 0
                         FROM conversation_members cm
                         JOIN workspace_members wm ON cm.workspace_member_id = wm.id
                         WHERE cm.conversation_id = $10
-                            AND wm.user_id = $2 
+                            AND wm.user_id = $2
                             AND wm.is_deactivated = false
                             AND cm.left_at IS NULL
                     )
@@ -91,7 +91,7 @@ export const handler = withCors(
             filtered_replies AS (
                 SELECT r.*
                 FROM messages r, access_validation av
-                WHERE r.parent_message_id = $1 
+                WHERE r.parent_message_id = $1
                     AND r.deleted_at IS NULL
                     AND av.has_access = true
                     AND ($3::uuid IS NULL OR r.created_at < (SELECT created_at FROM cursor_timestamp))
@@ -100,7 +100,7 @@ export const handler = withCors(
                 LIMIT $6 + 1
             ),
             reply_reactions AS (
-                SELECT 
+                SELECT
                     fr.id as message_id,
                     CASE WHEN $7 = 'true' THEN
                         COALESCE(
@@ -123,7 +123,7 @@ export const handler = withCors(
                 GROUP BY fr.id
             ),
             reply_attachments AS (
-                SELECT 
+                SELECT
                     fr.id as message_id,
                     CASE WHEN $8 = 'true' THEN
                         COALESCE(
@@ -147,7 +147,7 @@ export const handler = withCors(
                 GROUP BY fr.id
             ),
             enriched_replies AS (
-                SELECT 
+                SELECT
                     fr.*,
                     u.id as user_id,
                     u.name as user_name,
@@ -167,7 +167,7 @@ export const handler = withCors(
                 LEFT JOIN reply_attachments ra ON ra.message_id = fr.id
                 ORDER BY fr.created_at ASC
             )
-            SELECT 
+            SELECT
                 COALESCE(
                     json_agg(
                         json_build_object(
@@ -265,22 +265,22 @@ export const handler = withCors(
       if (include_count === 'true') {
         const countQuery = `
                 WITH access_validation AS (
-                    SELECT CASE 
+                    SELECT CASE
                         WHEN $3 = 'channel' THEN (
-                            SELECT COUNT(*) > 0 
+                            SELECT COUNT(*) > 0
                             FROM channel_members cm
                             JOIN workspace_members wm ON cm.workspace_member_id = wm.id
                             WHERE cm.channel_id = $4
-                                AND wm.user_id = $2 
+                                AND wm.user_id = $2
                                 AND wm.is_deactivated = false
                                 AND cm.left_at IS NULL
                         )
                         WHEN $3 = 'conversation' THEN (
-                            SELECT COUNT(*) > 0 
+                            SELECT COUNT(*) > 0
                             FROM conversation_members cm
                             JOIN workspace_members wm ON cm.workspace_member_id = wm.id
                             WHERE cm.conversation_id = $4
-                                AND wm.user_id = $2 
+                                AND wm.user_id = $2
                                 AND wm.is_deactivated = false
                                 AND cm.left_at IS NULL
                         )
@@ -289,7 +289,7 @@ export const handler = withCors(
                 )
                 SELECT COUNT(*) as total
                 FROM messages m, access_validation av
-                WHERE m.parent_message_id = $1 
+                WHERE m.parent_message_id = $1
                     AND m.deleted_at IS NULL
                     AND av.has_access = true
             `;

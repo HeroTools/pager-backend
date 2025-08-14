@@ -2,12 +2,13 @@ import { LambdaClient } from '@aws-sdk/client-lambda';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import { invokeLambdaFunction } from '../../common/helpers/invoke-lambda';
-import { withCors } from '../../common/utils/cors';
-import dbPool from '../../common/utils/create-db-pool';
-import { errorResponse, successResponse } from '../../common/utils/response';
+import { getUserIdFromToken } from '../../../common/helpers/auth';
+import { invokeLambdaFunction } from '../../../common/helpers/invoke-lambda';
+import { withCors } from '../../../common/utils/cors';
+import dbPool from '../../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../../common/utils/response';
 import { broadcastMessage } from '../helpers/broadcasting';
+import { processMentions } from '../helpers/process-mentions';
 import { deltaToMarkdown, deltaToPlainText } from '../helpers/quill-delta-converters';
 import { CompleteMessage } from '../types';
 
@@ -71,10 +72,12 @@ export const handler = withCors(
         try {
           const parsed = JSON.parse(body);
           deltaOps = parsed.ops;
-          messageText = deltaToMarkdown(deltaOps);
+          messageText = requestBodyResult.data.plain_text || deltaToMarkdown(deltaOps);
         } catch (error) {
           return errorResponse('Invalid message format', 400);
         }
+      } else if (requestBodyResult.data.plain_text) {
+        messageText = requestBodyResult.data.plain_text;
       }
 
       const userId = await getUserIdFromToken(event.headers.Authorization);
@@ -287,6 +290,12 @@ export const handler = withCors(
       }
 
       const completeMessage: CompleteMessage = completeRows[0];
+      let mentionedWorkspaceMemberIds: string[] = await processMentions(
+        client,
+        messageId,
+        workspaceId,
+        deltaOps,
+      );
 
       await client.query('COMMIT');
 
@@ -325,6 +334,7 @@ export const handler = withCors(
         parentMessageId: completeMessage.parent_message_id || undefined,
         threadId: completeMessage.thread_id || undefined,
         senderName: completeMessage.user_name,
+        mentionedWorkspaceMemberIds: mentionedWorkspaceMemberIds,
       };
 
       console.log('notificationPayload:', notificationPayload);

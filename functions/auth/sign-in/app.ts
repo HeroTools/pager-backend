@@ -1,7 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { withCors } from '../../common/utils/cors';
-import { errorResponse, successResponse } from '../../common/utils/response';
-import { supabase } from '../../common/utils/supabase-client';
+import { withCors } from '../../../common/utils/cors';
+import { errorResponse, successResponse } from '../../../common/utils/response';
+import { supabase } from '../../../common/utils/supabase-client';
 import type { AuthResponse, SignInRequestBody, UserProfile, Workspace } from '../types';
 
 export const handler = withCors(

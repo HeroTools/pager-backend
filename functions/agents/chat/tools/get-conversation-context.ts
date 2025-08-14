@@ -1,6 +1,6 @@
 import { tool } from '@openai/agents';
 import { z } from 'zod';
-import dbPool from '../../../common/utils/create-db-pool';
+import dbPool from '../../../../common/utils/create-db-pool';
 
 export const getConversationContext = tool({
   name: 'get_conversation_context',

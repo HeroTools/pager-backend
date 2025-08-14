@@ -8,11 +8,12 @@ export interface NotificationEvent {
   parentMessageId?: string;
   threadId?: string;
   senderName: string;
+  mentionedWorkspaceMemberIds: string[];
 }
 
 export interface Notification {
   workspace_member_id: string;
-  sender_workspace_member_id: string;
+  sender_workspace_member_id: string | null;
   workspace_id: string;
   type: 'mention' | 'direct_message' | 'channel_message' | 'thread_reply';
   title: string;

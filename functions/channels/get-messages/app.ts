@@ -1,11 +1,11 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import type { MessageWithUser } from '../../common/types';
-import { withCors } from '../../common/utils/cors';
-import dbPool from '../../common/utils/create-db-pool';
-import { errorResponse, successResponse } from '../../common/utils/response';
+import { getUserIdFromToken } from '../../../common/helpers/auth';
+import type { MessageWithUser } from '../../../common/types';
+import { withCors } from '../../../common/utils/cors';
+import dbPool from '../../../common/utils/create-db-pool';
+import { errorResponse, successResponse } from '../../../common/utils/response';
 import type { ChannelMemberWithUser } from '../types';
 
 // Validation schemas
@@ -93,19 +93,56 @@ export const handler = withCors(
         LIMIT $6 + 1
       ),
       thread_stats AS (
+        WITH thread_participants_raw AS (
+          SELECT
+            m.thread_id,
+            CASE
+              WHEN m.sender_type = 'user' THEN ru.id::text
+              WHEN m.sender_type = 'system' THEN COALESCE(m.metadata->>'webhook_id', 'system')
+              ELSE NULL
+            END AS participant_id,
+            CASE
+              WHEN m.sender_type = 'user' THEN ru.name
+              WHEN m.sender_type = 'system' THEN COALESCE(m.metadata->>'webhook_username', 'System')
+              ELSE NULL
+            END AS participant_name,
+            m.sender_type AS participant_type
+          FROM messages m
+          LEFT JOIN workspace_members rwm
+            ON m.workspace_member_id = rwm.id AND m.sender_type = 'user'
+          LEFT JOIN users ru
+            ON rwm.user_id = ru.id AND m.sender_type = 'user'
+          WHERE
+            m.channel_id = $1
+            AND m.deleted_at IS NULL
+            AND m.parent_message_id IS NOT NULL
+            AND m.sender_type IN ('user', 'system')
+        ),
+        thread_participants_unique AS (
+          SELECT DISTINCT
+            thread_id,
+            participant_id,
+            participant_name,
+            participant_type
+          FROM thread_participants_raw
+          WHERE participant_id IS NOT NULL
+        )
         SELECT
-          m.thread_id            AS root_id,
-          COUNT(*)               AS thread_reply_count,
-          MAX(m.created_at)      AS last_reply_at,           -- ← last reply timestamp
+          m.thread_id AS root_id,
+          COUNT(*) AS thread_reply_count,
+          MAX(m.created_at) AS last_reply_at,
           COALESCE(
-            json_agg(DISTINCT ru.id) FILTER (WHERE ru.id IS NOT NULL),
+            json_agg(
+              json_build_object(
+                'id', tpu.participant_id,
+                'name', tpu.participant_name,
+                'type', tpu.participant_type
+              )
+            ),
             '[]'::json
-          )                       AS thread_participants
+          ) AS thread_participants
         FROM messages m
-        JOIN workspace_members rwm
-          ON m.workspace_member_id = rwm.id
-        JOIN users ru
-          ON rwm.user_id = ru.id
+        LEFT JOIN thread_participants_unique tpu ON tpu.thread_id = m.thread_id
         WHERE
           m.channel_id = $1
           AND m.deleted_at IS NULL
@@ -171,26 +208,38 @@ export const handler = withCors(
       enriched_messages AS (
         SELECT
           fm.*,
-          u.id                AS user_id,
-          u.name              AS user_name,
-          u.email             AS user_email,
-          u.image             AS user_image,
-          us.status           AS user_status,
-          us.custom_status,
-          us.status_emoji,
-          us.last_seen_at,
+          -- User data (for user messages)
+          CASE WHEN fm.sender_type = 'user' THEN u.id END AS user_id,
+          CASE WHEN fm.sender_type = 'user' THEN u.name END AS user_name,
+          CASE WHEN fm.sender_type = 'user' THEN u.email END AS user_email,
+          CASE WHEN fm.sender_type = 'user' THEN u.image END AS user_image,
+          CASE WHEN fm.sender_type = 'user' THEN us.status END AS user_status,
+          CASE WHEN fm.sender_type = 'user' THEN us.custom_status END AS custom_status,
+          CASE WHEN fm.sender_type = 'user' THEN us.status_emoji END AS status_emoji,
+          CASE WHEN fm.sender_type = 'user' THEN us.last_seen_at END AS last_seen_at,
+
+          -- System/webhook data (for system messages)
+          CASE
+            WHEN fm.sender_type = 'system' THEN
+              COALESCE(fm.metadata->>'webhook_username', 'System')
+          END AS system_name,
+          CASE
+            WHEN fm.sender_type = 'system' THEN
+              fm.metadata->>'webhook_icon_url'
+          END AS system_avatar,
+
           mr.reactions_data,
           ma.attachments_data,
           COALESCE(ts.thread_reply_count, 0)     AS thread_reply_count,
           ts.last_reply_at                      AS thread_last_reply_at,
           COALESCE(ts.thread_participants, '[]') AS thread_participants
         FROM filtered_messages fm
-        JOIN workspace_members wm
-          ON fm.workspace_member_id = wm.id
-        JOIN users u
-          ON wm.user_id = u.id
+        LEFT JOIN workspace_members wm
+          ON fm.workspace_member_id = wm.id AND fm.sender_type = 'user'
+        LEFT JOIN users u
+          ON wm.user_id = u.id AND fm.sender_type = 'user'
         LEFT JOIN user_status us
-          ON us.user_id = u.id AND us.workspace_id = $4
+          ON us.user_id = u.id AND us.workspace_id = $4 AND fm.sender_type = 'user'
         LEFT JOIN message_reactions mr
           ON mr.message_id = fm.id
         LEFT JOIN message_attachments ma
@@ -220,22 +269,32 @@ export const handler = withCors(
               'parent_message_id',      em.parent_message_id,
               'thread_id',              em.thread_id,
               'message_type',           em.message_type,
+              'sender_type',            em.sender_type,
               'created_at',             em.created_at,
               'updated_at',             em.updated_at,
               'edited_at',              em.edited_at,
               'deleted_at',             em.deleted_at,
               'blocks',                 em.blocks,
               'metadata',               em.metadata,
-              'user', json_build_object(
-                'id',               em.user_id,
-                'name',             em.user_name,
-                'email',            em.user_email,
-                'image',            em.user_image,
-                'status',           em.user_status,
-                'custom_status',    em.custom_status,
-                'status_emoji',     em.status_emoji,
-                'last_seen_at',     em.last_seen_at
-              ),
+              'user', CASE
+                WHEN em.sender_type = 'user' THEN json_build_object(
+                  'id',               em.user_id,
+                  'name',             em.user_name,
+                  'email',            em.user_email,
+                  'image',            em.user_image,
+                  'status',           em.user_status,
+                  'custom_status',    em.custom_status,
+                  'status_emoji',     em.status_emoji,
+                  'last_seen_at',     em.last_seen_at
+                )
+                WHEN em.sender_type = 'system' THEN json_build_object(
+                  'id',               COALESCE(em.metadata->>'webhook_id', 'system'),
+                  'name',             em.system_name,
+                  'image',            em.system_avatar,
+                  'type',             'system'
+                )
+                ELSE NULL
+              END,
               'reactions',             em.reactions_data,
               'attachments',           em.attachments_data,
               'thread_reply_count',    em.thread_reply_count,
@@ -339,7 +398,7 @@ export const handler = withCors(
         const cntQ = `
         SELECT COUNT(*) AS total
         FROM messages
-        WHERE channel_id = $1 AND deleted_at IS NULL
+        WHERE channel_id = $1 AND deleted_at IS NULL AND parent_message_id IS NULL
       `;
         const { rows: cntRows } = await client.query(cntQ, [channelId]);
         totalCount = parseInt(cntRows[0]?.total || '0', 10);

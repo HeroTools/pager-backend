@@ -1,12 +1,12 @@
 import { APIGatewayProxyEvent, Context } from 'aws-lambda';
+import { DatabaseError, PoolClient } from 'pg';
 import { z, ZodError } from 'zod';
-import { PoolClient, DatabaseError } from 'pg';
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import { getWorkspaceMember } from '../../common/helpers/get-member';
-import { successResponse, errorResponse } from '../../common/utils/response';
-import dbPool from '../../common/utils/create-db-pool';
-import { ApplicationError, AuthError, ChannelError } from '../../common/utils/errors';
-import { withCors } from '../../common/utils/cors';
+import { getUserIdFromToken } from '../../../common/helpers/auth';
+import { getWorkspaceMember } from '../../../common/helpers/get-member';
+import { withCors } from '../../../common/utils/cors';
+import dbPool from '../../../common/utils/create-db-pool';
+import { ApplicationError, AuthError, ChannelError } from '../../../common/utils/errors';
+import { errorResponse, successResponse } from '../../../common/utils/response';
 
 const CHANNEL_MEMBER_ROLE = 'member';
 const PRIVATE_CHANNEL_TYPE = 'private';
@@ -41,18 +41,18 @@ const getChannelInfoAndValidateAccess = async (
 ): Promise<ChannelInfo> => {
   const result = await client.query(
     `
-        SELECT 
+        SELECT
             c.channel_type,
             cm.role as requesting_user_role,
             COALESCE(
                 ARRAY_AGG(existing_cm.workspace_member_id) FILTER (
                     WHERE existing_cm.workspace_member_id IS NOT NULL
-                ), 
+                ),
                 ARRAY[]::uuid[]
             ) as existing_member_ids
         FROM channels c
         LEFT JOIN channel_members cm ON c.id = cm.channel_id AND cm.workspace_member_id = $2
-        LEFT JOIN channel_members existing_cm ON c.id = existing_cm.channel_id 
+        LEFT JOIN channel_members existing_cm ON c.id = existing_cm.channel_id
             AND existing_cm.workspace_member_id = ANY($3::uuid[])
         WHERE c.id = $1
         GROUP BY c.id, c.channel_type, cm.role
@@ -85,7 +85,7 @@ const validateWorkspaceMembers = async (
   workspaceId: string,
 ): Promise<string[]> => {
   const validMembersResult = await client.query(
-    `SELECT id FROM workspace_members 
+    `SELECT id FROM workspace_members
          WHERE id = ANY($1::uuid[]) AND workspace_id = $2 AND is_deactivated = false`,
     [memberIds, workspaceId],
   );

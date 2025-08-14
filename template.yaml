@@ -41,6 +41,7 @@ Globals:
     Environment:
       Variables:
         DEPLOYMENT_VERSION: !Ref DeploymentVersion
+        ENVIRONMENT: !Ref Environment
         OPENAI_API_KEY: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/openai-api-key:SecretString}}'
         GOOGLE_CLIENT_ID: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/google-client-id:SecretString}}'
         SUPABASE_URL: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/supabase-url:SecretString}}'
@@ -51,6 +52,7 @@ Globals:
         PG_DATABASE: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-database:SecretString}}'
         PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-password:SecretString}}'
         PG_PORT: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-port:SecretString}}'
+        LOCAL_WEBHOOK_API_URL: !Sub 'https://f2b3turp1j.execute-api.us-east-2.amazonaws.com/${Environment}/webhooks'
         VERCEL_PROJECTS: pager-frontend
         ALLOW_VERCEL_PREVIEWS: true
         FRONTEND_URL: !FindInMap
@@ -421,6 +423,15 @@ Resources:
         Target: es2024
         EntryPoints:
           - service/app.ts
+
+  # SSM Parameter for Notification Service Function ARN
+  NotificationServiceFunctionArnParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackName}/${Environment}/notification-service-function-arn'
+      Type: String
+      Value: !GetAtt NotificationServiceFunction.Arn
+      Description: 'ARN of the notification service function for cross-stack reference'
 
   # MARK AS READ
   MarkAsReadFunction:
@@ -1738,6 +1749,53 @@ Resources:
         Target: es2024
         EntryPoints:
           - status/app.ts
+
+  WebhookManagementFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/webhooks
+      Handler: app.handler
+      Environment:
+        Variables:
+          WEBHOOK_API_URL: !Sub '{{resolve:ssm:/pager-webhooks-${Environment}/${Environment}/webhook-api-url}}'
+      Events:
+        ApiEventList:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/webhooks
+            Method: GET
+            RestApiId: !Ref MainApi
+        ApiEventDetails:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/webhooks/{webhookId}
+            Method: GET
+            RestApiId: !Ref MainApi
+        ApiEventUpdate:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/webhooks/{webhookId}
+            Method: PATCH
+            RestApiId: !Ref MainApi
+        ApiEventDelete:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/webhooks/{webhookId}
+            Method: DELETE
+            RestApiId: !Ref MainApi
+        ApiEventCreate:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/webhooks
+            Method: POST
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - app.ts
 
 Outputs:
   # Function URL for streaming

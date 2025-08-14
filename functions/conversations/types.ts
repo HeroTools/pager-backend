@@ -1,4 +1,4 @@
-import { MessageWithUser } from '../common/types';
+import { MessageWithUser } from '../../common/types';
 
 export interface User {
   id: string;

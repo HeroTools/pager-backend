@@ -1,4 +1,4 @@
-import { supabase } from '../../common/utils/supabase-client';
+import { supabase } from '../../../common/utils/supabase-client';
 
 const getWorkspaceMember = async (workspaceId: string, userId: string) => {
   const { data: member } = await supabase
@@ -59,4 +59,4 @@ const getConversationMembers = async (conversationId: string) => {
   return data.map((member) => member.workspace_members.users.id);
 };
 
-export { getWorkspaceMember, getChannelMembers, getConversationMembers };
+export { getChannelMembers, getConversationMembers, getWorkspaceMember };

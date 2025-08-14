@@ -14,7 +14,7 @@ import {
 export async function createChannelMessageNotifications(
   client: PoolClient,
   channelId: string,
-  senderWorkspaceMemberId: string,
+  senderWorkspaceMemberId: string | null,
   workspaceId: string,
   messageId: string,
   messageText: string,
@@ -22,30 +22,50 @@ export async function createChannelMessageNotifications(
 ): Promise<Notification[]> {
   const notifications: Notification[] = [];
 
-  const channelMembersQuery = `
-        SELECT wm.id as workspace_member_id
-        FROM channel_members cm
-        JOIN workspace_members wm ON cm.workspace_member_id = wm.id
-        WHERE cm.channel_id = $1 
-          AND cm.left_at IS NULL 
-          AND wm.id != $2
-          AND wm.is_deactivated = false
+  // For webhook messages (no sender), notify all channel members
+  // For user messages, notify all channel members except the sender
+  const channelMembersQuery = senderWorkspaceMemberId 
+    ? `
+      SELECT wm.id as workspace_member_id
+      FROM channel_members cm
+      JOIN workspace_members wm ON cm.workspace_member_id = wm.id
+      WHERE cm.channel_id = $1
+        AND cm.left_at IS NULL
+        AND wm.id != $2
+        AND wm.is_deactivated = false
+    `
+    : `
+      SELECT wm.id as workspace_member_id
+      FROM channel_members cm
+      JOIN workspace_members wm ON cm.workspace_member_id = wm.id
+      WHERE cm.channel_id = $1
+        AND cm.left_at IS NULL
+        AND wm.is_deactivated = false
     `;
 
-  const { rows: memberRows } = await client.query(channelMembersQuery, [
-    channelId,
-    senderWorkspaceMemberId,
-  ]);
+  const queryParams = senderWorkspaceMemberId 
+    ? [channelId, senderWorkspaceMemberId]
+    : [channelId];
+
+  const { rows: memberRows } = await client.query(channelMembersQuery, queryParams);
+
   const channelName = await getChannelName(client, channelId);
 
   for (const member of memberRows) {
+    // Create different notification format for webhooks vs user messages
+    const isWebhookMessage = !senderWorkspaceMemberId;
+    
     notifications.push({
       workspace_member_id: member.workspace_member_id,
       sender_workspace_member_id: senderWorkspaceMemberId,
       workspace_id: workspaceId,
       type: 'channel_message',
-      title: `New message in #${channelName}`,
-      message: `${senderName}: ${truncateMessage(messageText)}`,
+      title: isWebhookMessage 
+        ? `${senderName} activity in #${channelName}`
+        : `New message in #${channelName}`,
+      message: isWebhookMessage
+        ? truncateMessage(messageText)
+        : `${senderName}: ${truncateMessage(messageText)}`,
       related_message_id: messageId,
       related_channel_id: channelId,
     });
@@ -71,32 +91,43 @@ export async function createMentionNotifications(
 ): Promise<Notification[]> {
   const notifications: Notification[] = [];
 
-  for (const workspaceMemberId of mentionedWorkspaceMemberIds) {
-    if (workspaceMemberId === senderWorkspaceMemberId) continue; // Don't notify the sender
+  if (mentionedWorkspaceMemberIds.length === 0) {
+    return notifications;
+  }
 
-    // Check if user already has a notification (from channel message)
+  // Lazy load channel name only when actually needed
+  let channelName: string | null = null;
+  let channelNameFetched = false;
+
+  const getChannelNameCached = async (): Promise<string | null> => {
+    if (!channelNameFetched && channelId) {
+      channelName = await getChannelName(client, channelId);
+      channelNameFetched = true;
+    }
+    return channelName;
+  };
+
+  for (const workspaceMemberId of mentionedWorkspaceMemberIds) {
+    if (workspaceMemberId === senderWorkspaceMemberId) continue;
+
     const existingNotification = existingNotifications.find(
       (n) => n.workspace_member_id === workspaceMemberId,
     );
 
     if (existingNotification) {
-      // Upgrade existing channel notification to mention notification
       existingNotification.type = 'mention';
       if (channelId) {
-        const channelName = await getChannelName(client, channelId);
-        existingNotification.title = `${senderName} mentioned you in #${channelName}`;
-        existingNotification.message = truncateMessage(messageText);
+        const name = await getChannelNameCached();
+        existingNotification.title = `${senderName} mentioned you in #${name}`;
       } else {
         existingNotification.title = `${senderName} mentioned you in a conversation`;
-        existingNotification.message = truncateMessage(messageText);
       }
+      existingNotification.message = truncateMessage(messageText);
     } else {
-      // Create new mention notification
       let title: string;
-
       if (channelId) {
-        const channelName = await getChannelName(client, channelId);
-        title = `${senderName} mentioned you in #${channelName}`;
+        const name = await getChannelNameCached();
+        title = `${senderName} mentioned you in #${name}`;
       } else {
         title = `${senderName} mentioned you in a conversation`;
       }
@@ -134,21 +165,19 @@ export async function createDirectMessageNotifications(
   const notifications: Notification[] = [];
 
   const conversationMembersQuery = `
-        SELECT wm.id as workspace_member_id
-        FROM conversation_members cm
-        JOIN workspace_members wm ON cm.workspace_member_id = wm.id
-        WHERE cm.conversation_id = $1 
-          AND cm.left_at IS NULL 
-          AND wm.id != $2
-          AND wm.is_deactivated = false
-    `;
+    SELECT wm.id as workspace_member_id
+    FROM conversation_members cm
+    JOIN workspace_members wm ON cm.workspace_member_id = wm.id
+    WHERE cm.conversation_id = $1
+      AND cm.left_at IS NULL
+      AND wm.id != $2
+      AND wm.is_deactivated = false
+  `;
 
   const { rows: memberRows } = await client.query(conversationMembersQuery, [
     conversationId,
     senderWorkspaceMemberId,
   ]);
-
-  console.log('memberRows:', memberRows);
 
   for (const member of memberRows) {
     // Don't duplicate if they're already getting a mention notification
@@ -192,24 +221,27 @@ export async function createThreadReplyNotifications(
   const notifications: Notification[] = [];
   const actualThreadId = threadId || parentMessageId;
 
-  // Notify the original message author (need to update this helper to return workspace_member_id)
+  // Cache channel name if needed
+  let channelName: string | null = null;
+  if (channelId) {
+    channelName = await getChannelName(client, channelId);
+  }
+
+  // Notify the original message author
   const originalAuthorWorkspaceMemberId = await getOriginalMessageAuthor(
     client,
     parentMessageId,
     senderWorkspaceMemberId,
   );
+
   if (
     originalAuthorWorkspaceMemberId &&
     !isAlreadyNotified(existingNotifications, originalAuthorWorkspaceMemberId)
   ) {
-    let title: string;
-
-    if (channelId) {
-      const channelName = await getChannelName(client, channelId);
-      title = `${senderName} replied to your message in #${channelName}`;
-    } else {
-      title = `${senderName} replied to your message`;
-    }
+    const title =
+      channelId && channelName
+        ? `${senderName} replied to your message in #${channelName}`
+        : `${senderName} replied to your message`;
 
     notifications.push({
       workspace_member_id: originalAuthorWorkspaceMemberId,
@@ -224,7 +256,7 @@ export async function createThreadReplyNotifications(
     });
   }
 
-  // Notify other thread participants (need to update this helper to return workspace_member_ids)
+  // Notify other thread participants
   const threadParticipantWorkspaceMemberIds = await getThreadParticipants(
     client,
     actualThreadId,
@@ -238,14 +270,10 @@ export async function createThreadReplyNotifications(
     );
 
     if (!alreadyNotified) {
-      let title: string;
-
-      if (channelId) {
-        const channelName = await getChannelName(client, channelId);
-        title = `New reply from ${senderName} in thread you follow in #${channelName}`;
-      } else {
-        title = `New reply from ${senderName} in thread you follow`;
-      }
+      const title =
+        channelId && channelName
+          ? `New reply from ${senderName} in thread you follow in #${channelName}`
+          : `New reply from ${senderName} in thread you follow`;
 
       notifications.push({
         workspace_member_id: participantWorkspaceMemberId,

@@ -3,11 +3,11 @@ import OpenAI from 'openai';
 import { registerTypes, toSql } from 'pgvector/pg';
 import { z } from 'zod';
 
-import { getUserIdFromToken } from '../../common/helpers/auth';
-import { withCors } from '../../common/utils/cors';
-import dbPool from '../../common/utils/create-db-pool';
-import { openai } from '../../common/utils/create-embedding';
-import { errorResponse, successResponse } from '../../common/utils/response';
+import { getUserIdFromToken } from '../../../common/helpers/auth';
+import { withCors } from '../../../common/utils/cors';
+import dbPool from '../../../common/utils/create-db-pool';
+import { openai } from '../../../common/utils/create-embedding';
+import { errorResponse, successResponse } from '../../../common/utils/response';
 import { SearchRequest, SearchResponse, SearchResult } from '../types';
 
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-3-small';

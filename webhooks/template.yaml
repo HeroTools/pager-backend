@@ -1,0 +1,289 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+
+  StackName:
+    Type: String
+    Default: pager-webhooks-dev
+    AllowedValues: [pager-webhooks-dev, pager-webhooks-prod]
+
+  MainStackName:
+    Type: String
+    Default: unowned-dev
+    AllowedValues: [unowned, unowned-dev]
+    Description: 'Name of the main stack containing the secrets'
+
+  DeploymentVersion:
+    Type: String
+    Default: '1.0.0'
+    Description: 'Change this value to force function updates'
+
+  EnableNotifications:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Enable notification service integration (requires main stack to be deployed first)'
+
+Conditions:
+  NotificationsEnabled: !Equals [!Ref EnableNotifications, 'true']
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 512
+    Environment:
+      Variables:
+        DEPLOYMENT_VERSION: !Ref DeploymentVersion
+        SUPABASE_URL: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/supabase-url:SecretString}}'
+        SUPABASE_ANON_KEY: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/supabase-anon-key:SecretString}}'
+        SUPABASE_SERVICE_ROLE_KEY: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/supabase-service-role-key:SecretString}}'
+        PG_USER: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/pg-user:SecretString}}'
+        PG_HOST: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/pg-host:SecretString}}'
+        PG_DATABASE: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/pg-database:SecretString}}'
+        PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/pg-password:SecretString}}'
+        PG_PORT: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/pg-port:SecretString}}'
+
+Resources:
+  WebhookApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Environment
+      Name: !Sub 'pager-webhooks-${Environment}'
+      CorsConfiguration:
+        AllowMethods: [POST, GET, OPTIONS, PATCH, DELETE]
+        AllowHeaders:
+          [
+            Content-Type,
+            X-Pager-Signature,
+            X-Pager-Request-Timestamp,
+            X-Api-Key,
+            X-Amz-Date,
+            X-Amz-Security-Token,
+            X-Workspace-Id,
+            Authorization,
+          ]
+        AllowOrigins: ['*']
+
+  # SSM Parameter for Webhook API URL
+  WebhookApiUrlParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackName}/${Environment}/webhook-api-url'
+      Type: String
+      Value: !Sub 'https://${WebhookApi}.execute-api.${AWS::Region}.amazonaws.com'
+      Description: 'Webhook API URL for cross-stack reference'
+
+  WebhookQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${StackName}.fifo'
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      VisibilityTimeout: 60
+      MessageRetentionPeriod: 1209600
+
+  # Custom Webhook Handler (original)
+  CustomWebhookHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'pager-custom-webhook-handler-${StackName}'
+      CodeUri: src/handlers
+      Handler: webhook-handler.handler
+      Environment:
+        Variables:
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          WEBHOOK_QUEUE_URL: !Ref WebhookQueue
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt WebhookQueue.QueueName
+      Events:
+        CustomWebhookPost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref WebhookApi
+            Path: /webhooks/custom/{webhookId}
+            Method: POST
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - webhook-handler.ts
+
+  # GitHub Webhook Handler
+  GitHubWebhookHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'pager-github-webhook-handler-${StackName}'
+      CodeUri: src/handlers
+      Handler: github-webhook-handler.handler
+      Environment:
+        Variables:
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          WEBHOOK_QUEUE_URL: !Ref WebhookQueue
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt WebhookQueue.QueueName
+      Events:
+        GitHubWebhookPost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref WebhookApi
+            Path: /webhooks/github/{webhookId}
+            Method: POST
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - github-webhook-handler.ts
+
+  # Linear Webhook Handler
+  LinearWebhookHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'pager-linear-webhook-handler-${StackName}'
+      CodeUri: src/handlers
+      Handler: linear-webhook-handler.handler
+      Environment:
+        Variables:
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          WEBHOOK_QUEUE_URL: !Ref WebhookQueue
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt WebhookQueue.QueueName
+      Events:
+        LinearWebhookPost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref WebhookApi
+            Path: /webhooks/linear/{webhookId}
+            Method: POST
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - linear-webhook-handler.ts
+
+  # Jira Webhook Handler
+  JiraWebhookHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'pager-jira-webhook-handler-${StackName}'
+      CodeUri: src/handlers
+      Handler: jira-webhook-handler.handler
+      Environment:
+        Variables:
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          WEBHOOK_QUEUE_URL: !Ref WebhookQueue
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt WebhookQueue.QueueName
+      Events:
+        JiraWebhookPost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref WebhookApi
+            Path: /webhooks/jira/{webhookId}
+            Method: POST
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - jira-webhook-handler.ts
+
+  # Stripe Webhook Handler
+  StripeWebhookHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'pager-stripe-webhook-handler-${StackName}'
+      CodeUri: src/handlers
+      Handler: stripe-webhook-handler.handler
+      Environment:
+        Variables:
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          WEBHOOK_QUEUE_URL: !Ref WebhookQueue
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt WebhookQueue.QueueName
+      Events:
+        StripeWebhookPost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref WebhookApi
+            Path: /webhooks/stripe/{webhookId}
+            Method: POST
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - stripe-webhook-handler.ts
+
+  MessageProcessor:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'pager-message-processor-${StackName}'
+      CodeUri: src/processors
+      Handler: message-processor.handler
+      Environment:
+        Variables:
+          NOTIFICATION_SERVICE_FUNCTION_ARN: !If 
+            - NotificationsEnabled
+            - !Sub '{{resolve:ssm:/${MainStackName}/${Environment}/notification-service-function-arn}}'
+            - ''
+      Policies:
+        - SQSPollerPolicy:
+            QueueName: !GetAtt WebhookQueue.QueueName
+        - !If
+          - NotificationsEnabled
+          - Version: '2012-10-17'
+            Statement:
+              Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+                - lambda:InvokeAsync
+              Resource: !Sub '{{resolve:ssm:/${MainStackName}/${Environment}/notification-service-function-arn}}'
+          - !Ref AWS::NoValue
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt WebhookQueue.Arn
+            BatchSize: 5
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - message-processor.ts
+
+Outputs:
+  WebhookApiUrl:
+    Description: 'Webhook API URL'
+    Value: !Sub 'https://${WebhookApi}.execute-api.${AWS::Region}.amazonaws.com'
+    Export:
+      Name: !Sub 'pager-webhook-api-url-${Environment}'
+
+  QueueUrl:
+    Description: 'Webhook processing queue URL'
+    Value: !Ref WebhookQueue
