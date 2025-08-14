@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { getUserIdFromToken } from '../../../common/helpers/auth';
 import dbPool from '../../../common/utils/create-db-pool';
 import { conversationAgent } from './agents';
-import { getOrCreateConversation, saveAiMessage } from './helpers/database-helpers';
+import { getOrCreateConversation, saveAiMessage, shouldGroupResponse } from './helpers/database-helpers';
 
 const ChatRequest = z.object({
   message: z.string().min(1),
@@ -244,6 +244,19 @@ export const streamHandler = async (
 
     const startTime = Date.now();
 
+    // Check conversation type and prepare system prompt
+    const conversationType = await client.query(
+      'SELECT conversation_type FROM conversations WHERE id = $1',
+      [conversation.id]
+    );
+    const isMultiUser = conversationType.rows[0]?.conversation_type === 'multi_user_agent';
+    
+    let systemPrompt = `You are ${agent.name}. ${agent.system_prompt || ''}. Current conversation_id: ${conversation.id}. Always use this ID when calling get_conversation_context.`;
+    
+    if (isMultiUser) {
+      systemPrompt += `\n\nIMPORTANT: This is a multi-user conversation. Multiple people may be talking to you. When responding, consider if recent messages from different users are related and should be addressed together. If multiple users have asked questions within a short time window, try to address all their questions in a single comprehensive response. Always be clear about which parts of your response address which user's questions.`;
+    }
+
     // Create OpenAI stream with timeout
     try {
       openAIStream = await Promise.race([
@@ -252,7 +265,7 @@ export const streamHandler = async (
           [
             {
               role: 'system',
-              content: `You are ${agent.name}. ${agent.system_prompt || ''}. Current conversation_id: ${conversation.id}. Always use this ID when calling get_conversation_context.`,
+              content: systemPrompt,
             },
             {
               role: 'user',
@@ -481,6 +494,19 @@ export const streamHandler = async (
     const finalToolCalls = openAIStream?.toolCalls || [];
     toolCallCount = finalToolCalls.length;
 
+    // Check if this is a multi-user conversation and if we should group the response
+    const groupingInfo = await shouldGroupResponse(client, conversation.id);
+    
+    let responseContext = null;
+    if (groupingInfo.shouldGroup) {
+      responseContext = {
+        is_grouped_response: true,
+        response_to_user_ids: groupingInfo.userMessages.map(msg => msg.userId),
+        grouped_with_message_ids: groupingInfo.userMessages.map(msg => msg.messageId),
+        addressed_users: groupingInfo.userMessages.map(msg => msg.userName),
+      };
+    }
+
     const agentMessage = await saveAiMessage(
       client,
       conversation.id,
@@ -489,6 +515,7 @@ export const streamHandler = async (
       finalResponse,
       undefined,
       body.agentId,
+      responseContext,
     );
 
     // Send completion thinking event

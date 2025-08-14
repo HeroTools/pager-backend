@@ -1642,6 +1642,69 @@ Resources:
         EntryPoints:
           - get-conversation-messages/app.ts
 
+  # CREATE MULTI-USER AGENT CONVERSATION
+  CreateMultiUserAgentConversationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/agents
+      Handler: create-multi-user-conversation/app.handler
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/agents/conversations/multi-user
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - create-multi-user-conversation/app.ts
+
+  # JOIN AGENT CONVERSATION
+  JoinAgentConversationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/agents
+      Handler: join-conversation/app.handler
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/agents/conversations/join
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - join-conversation/app.ts
+
+  # LIST MULTI-USER AGENT CONVERSATIONS
+  ListMultiUserAgentConversationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/agents
+      Handler: list-multi-user-conversations/app.handler
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/agents/conversations/multi-user
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - list-multi-user-conversations/app.ts
+
   MigrationQueue:
     Type: AWS::SQS::Queue
     Properties:

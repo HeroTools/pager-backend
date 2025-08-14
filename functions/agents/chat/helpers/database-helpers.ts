@@ -40,27 +40,42 @@ export async function getOrCreateConversation(
   await client.query('BEGIN');
 
   try {
-    // Create new conversation
+    // Create new conversation (single-user by default)
     const conversationResult = await client.query(
-      `INSERT INTO conversations (workspace_id, title)
-       VALUES ($1, $2)
+      `INSERT INTO conversations (
+        workspace_id, 
+        title, 
+        conversation_type, 
+        creator_workspace_member_id
+      )
+       VALUES ($1, $2, 'direct', $3)
        RETURNING *`,
-      [workspaceId, 'AI Conversation'],
+      [workspaceId, 'AI Conversation', workspaceMemberId],
     );
 
     const conversation = conversationResult.rows[0];
 
-    // Add user as conversation member
+    // Add user as conversation member with creator role
     await client.query(
-      `INSERT INTO conversation_members (conversation_id, workspace_member_id, joined_at)
-       VALUES ($1, $2, NOW())`,
+      `INSERT INTO conversation_members (
+        conversation_id, 
+        workspace_member_id, 
+        role,
+        joined_at
+      )
+       VALUES ($1, $2, 'creator', NOW())`,
       [conversation.id, workspaceMemberId],
     );
 
     // Add agent as conversation member
     await client.query(
-      `INSERT INTO conversation_members (conversation_id, ai_agent_id, joined_at)
-       VALUES ($1, $2, NOW())`,
+      `INSERT INTO conversation_members (
+        conversation_id, 
+        ai_agent_id, 
+        role,
+        joined_at
+      )
+       VALUES ($1, $2, 'agent', NOW())`,
       [conversation.id, agentId],
     );
 
@@ -80,6 +95,7 @@ export async function saveAiMessage(
   content: string,
   workspaceMemberId?: string,
   agentId?: string,
+  responseContext?: any,
 ): Promise<AgentMessageWithSender> {
   const messageResult = await client.query(
     `INSERT INTO messages (
@@ -91,9 +107,10 @@ export async function saveAiMessage(
         workspace_member_id,
         ai_agent_id,
         message_type,
+        response_context,
         created_at,
         updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'direct', NOW(), NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'direct', $8, NOW(), NOW())
       RETURNING
         id,
         body,
@@ -106,6 +123,7 @@ export async function saveAiMessage(
         thread_id,
         message_type,
         sender_type,
+        response_context,
         created_at,
         updated_at,
         edited_at,
@@ -120,6 +138,7 @@ export async function saveAiMessage(
       senderType,
       workspaceMemberId,
       agentId,
+      responseContext ? JSON.stringify(responseContext) : null,
     ],
   );
 
@@ -207,4 +226,76 @@ export async function getUserAiConversations(
   );
 
   return result.rows;
+}
+
+// Helper functions for multi-user conversations
+export async function getConversationType(
+  client: PoolClient,
+  conversationId: string,
+): Promise<'direct' | 'multi_user_agent' | 'group'> {
+  const result = await client.query(
+    'SELECT conversation_type FROM conversations WHERE id = $1',
+    [conversationId]
+  );
+  return result.rows[0]?.conversation_type || 'direct';
+}
+
+export async function getRecentUserMessages(
+  client: PoolClient,
+  conversationId: string,
+  timeWindowMinutes: number = 5,
+): Promise<{ userId: string; messageId: string; userName: string; content: string }[]> {
+  const result = await client.query(
+    `SELECT 
+      m.id as message_id,
+      m.body as content,
+      wm.id as user_id,
+      u.name as user_name
+    FROM messages m
+    JOIN workspace_members wm ON m.workspace_member_id = wm.id
+    JOIN users u ON wm.user_id = u.id
+    WHERE m.conversation_id = $1 
+    AND m.sender_type = 'user'
+    AND m.created_at >= NOW() - INTERVAL '${timeWindowMinutes} minutes'
+    ORDER BY m.created_at DESC`,
+    [conversationId]
+  );
+
+  return result.rows.map(row => ({
+    userId: row.user_id,
+    messageId: row.message_id,
+    userName: row.user_name,
+    content: row.content,
+  }));
+}
+
+export async function shouldGroupResponse(
+  client: PoolClient,
+  conversationId: string,
+): Promise<{
+  shouldGroup: boolean;
+  userMessages: Array<{
+    userId: string;
+    messageId: string;
+    userName: string;
+    content: string;
+  }>;
+}> {
+  const conversationType = await getConversationType(client, conversationId);
+  
+  if (conversationType !== 'multi_user_agent') {
+    return { shouldGroup: false, userMessages: [] };
+  }
+
+  // Get recent user messages within a 5-minute window
+  const userMessages = await getRecentUserMessages(client, conversationId, 5);
+  
+  // Group if there are multiple users asking questions within the time window
+  const uniqueUsers = new Set(userMessages.map(msg => msg.userId));
+  const shouldGroup = uniqueUsers.size > 1;
+  
+  return {
+    shouldGroup,
+    userMessages,
+  };
 }

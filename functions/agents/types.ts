@@ -35,6 +35,10 @@ export interface AgentConversation {
   last_read_message_id: string | null;
   is_hidden: boolean;
   last_message: AgentConversationLastMessage | null;
+  conversation_type: 'direct' | 'multi_user_agent' | 'group';
+  is_public: boolean;
+  description: string | null;
+  creator_workspace_member_id: string | null;
 }
 
 export interface AgentConversationsResponse {
@@ -99,6 +103,10 @@ export interface AgentConversationData {
     created_at: string;
     updated_at: string;
     title: string | null;
+    conversation_type: 'direct' | 'multi_user_agent' | 'group';
+    is_public: boolean;
+    description: string | null;
+    creator_workspace_member_id: string | null;
   };
   agent: {
     id: string;
@@ -117,6 +125,16 @@ export interface AgentConversationData {
     last_read_message_id: string | null;
     workspace_member_id: string;
   };
+  members?: Array<{
+    id: string;
+    role: string;
+    joined_at: string;
+    user?: {
+      id: string;
+      name: string;
+      image: string | null;
+    };
+  }>;
 }
 
 export interface AgentConversationMessageFilters {
@@ -126,4 +144,67 @@ export interface AgentConversationMessageFilters {
   include_reactions?: boolean;
   include_attachments?: boolean;
   include_count?: boolean;
+}
+
+export interface MultiUserAgentConversationCreateRequest {
+  agentId: string;
+  title: string;
+  description?: string;
+  isPublic?: boolean;
+  initialUserIds?: string[]; // workspace_member_ids to invite initially
+}
+
+export interface MultiUserAgentConversationResponse {
+  conversation: {
+    id: string;
+    workspace_id: string;
+    title: string;
+    description: string | null;
+    conversation_type: 'multi_user_agent';
+    is_public: boolean;
+    creator_workspace_member_id: string;
+    created_at: string;
+    updated_at: string;
+  };
+  agent: {
+    id: string;
+    name: string;
+    avatar_url: string | null;
+    is_active: boolean;
+  };
+  members: Array<{
+    id: string;
+    role: string;
+    joined_at: string;
+    user: {
+      id: string;
+      name: string;
+      image: string | null;
+    };
+  }>;
+  invite_code?: string; // Only included if conversation is public
+}
+
+export interface ConversationInvite {
+  id: string;
+  conversation_id: string;
+  invited_by_workspace_member_id: string;
+  invited_workspace_member_id: string | null;
+  invite_code: string | null;
+  expires_at: string | null;
+  used_at: string | null;
+  created_at: string;
+}
+
+export interface JoinConversationRequest {
+  inviteCode?: string;
+  conversationId?: string; // For public conversations
+}
+
+export interface MessageWithResponseContext extends AgentMessageWithSender {
+  response_context?: {
+    grouped_with_message_ids?: string[];
+    response_to_user_ids?: string[];
+    is_grouped_response?: boolean;
+  };
 }
