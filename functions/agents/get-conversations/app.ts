@@ -16,18 +16,6 @@ const queryParamsSchema = z.object({
     .string()
     .optional()
     .transform((val) => val === 'true'),
-  limit: z
-    .string()
-    .optional()
-    .transform((val) => {
-      if (!val) return 20;
-      const parsed = parseInt(val, 10);
-      if (isNaN(parsed) || parsed < 1 || parsed > 100) {
-        throw new Error('Limit must be between 1 and 100');
-      }
-      return parsed;
-    }),
-  cursor: z.string().datetime().optional(),
 });
 
 export const handler = withCors(
@@ -56,7 +44,7 @@ export const handler = withCors(
           400,
         );
       }
-      const { include_hidden: includeHidden, limit, cursor } = queryParamsResult.data;
+      const { include_hidden: includeHidden } = queryParamsResult.data;
 
       // 4) Workspace membership check
       const currentMember = await getMember(workspaceId, userId);
@@ -112,7 +100,6 @@ export const handler = withCors(
           AND agent_cm.ai_agent_id = $3
           AND agent_cm.left_at IS NULL
           ${!includeHidden ? 'AND user_cm.is_hidden = false' : ''}
-          ${cursor ? 'AND c.updated_at < $5' : ''}
           AND (lm.id IS NULL OR lm.id = (
             SELECT m.id FROM messages m
             WHERE m.conversation_id = c.id
@@ -120,42 +107,33 @@ export const handler = withCors(
             LIMIT 1
           ))
         ORDER BY c.updated_at DESC
-        LIMIT $4
+        LIMIT 1
       `;
 
-      const queryParams = [workspaceId, currentMember.id, agentId, limit + 1]; // +1 to check if there's more
-      if (cursor) {
-        queryParams.push(cursor);
-      }
+      const queryParams = [workspaceId, currentMember.id, agentId];
 
       const conversationsResult = await client.query(conversationsQuery, queryParams);
 
-      // 4) Check if there are more results (we fetched limit + 1)
-      const hasMore = conversationsResult.rows.length > limit;
-      const conversations = conversationsResult.rows.slice(0, limit); // Remove the extra item
-
-      // 5) Get next cursor (last item's updated_at)
-      const nextCursor =
-        conversations.length > 0 ? conversations[conversations.length - 1].updated_at : null;
-
-      // 6) Transform to frontend format
-      const transformedConversations = conversations.map((row) => ({
-        id: row.id,
-        workspace_id: row.workspace_id,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-        title: row.title,
-        last_read_message_id: row.last_read_message_id,
-        is_hidden: row.is_hidden,
-        last_message: row.last_message_body
+      // 4) Transform to frontend format - return single conversation or null
+      const conversation = conversationsResult.rows.length > 0 ? conversationsResult.rows[0] : null;
+      
+      const transformedConversation = conversation ? {
+        id: conversation.id,
+        workspace_id: conversation.workspace_id,
+        created_at: conversation.created_at,
+        updated_at: conversation.updated_at,
+        title: conversation.title,
+        last_read_message_id: conversation.last_read_message_id,
+        is_hidden: conversation.is_hidden,
+        last_message: conversation.last_message_body
           ? {
-              body: row.last_message_body,
-              created_at: row.last_message_at,
-              sender_type: row.last_message_sender_type,
-              sender_name: row.last_message_sender_name,
+              body: conversation.last_message_body,
+              created_at: conversation.last_message_at,
+              sender_type: conversation.last_message_sender_type,
+              sender_name: conversation.last_message_sender_name,
             }
           : null,
-      }));
+      } : null;
 
       const response = {
         agent: {
@@ -164,12 +142,7 @@ export const handler = withCors(
           avatar_url: agent.avatar_url,
           is_active: agent.is_active,
         },
-        conversations: transformedConversations,
-        pagination: {
-          limit,
-          hasMore,
-          nextCursor: hasMore ? nextCursor : null,
-        },
+        conversation: transformedConversation,
       };
 
       return successResponse(response, 200);

@@ -14,7 +14,7 @@ import {
 export async function createChannelMessageNotifications(
   client: PoolClient,
   channelId: string,
-  senderWorkspaceMemberId: string,
+  senderWorkspaceMemberId: string | null,
   workspaceId: string,
   messageId: string,
   messageText: string,
@@ -22,31 +22,50 @@ export async function createChannelMessageNotifications(
 ): Promise<Notification[]> {
   const notifications: Notification[] = [];
 
-  const channelMembersQuery = `
-    SELECT wm.id as workspace_member_id
-    FROM channel_members cm
-    JOIN workspace_members wm ON cm.workspace_member_id = wm.id
-    WHERE cm.channel_id = $1
-      AND cm.left_at IS NULL
-      AND wm.id != $2
-      AND wm.is_deactivated = false
-  `;
+  // For webhook messages (no sender), notify all channel members
+  // For user messages, notify all channel members except the sender
+  const channelMembersQuery = senderWorkspaceMemberId 
+    ? `
+      SELECT wm.id as workspace_member_id
+      FROM channel_members cm
+      JOIN workspace_members wm ON cm.workspace_member_id = wm.id
+      WHERE cm.channel_id = $1
+        AND cm.left_at IS NULL
+        AND wm.id != $2
+        AND wm.is_deactivated = false
+    `
+    : `
+      SELECT wm.id as workspace_member_id
+      FROM channel_members cm
+      JOIN workspace_members wm ON cm.workspace_member_id = wm.id
+      WHERE cm.channel_id = $1
+        AND cm.left_at IS NULL
+        AND wm.is_deactivated = false
+    `;
 
-  const { rows: memberRows } = await client.query(channelMembersQuery, [
-    channelId,
-    senderWorkspaceMemberId,
-  ]);
+  const queryParams = senderWorkspaceMemberId 
+    ? [channelId, senderWorkspaceMemberId]
+    : [channelId];
+
+  const { rows: memberRows } = await client.query(channelMembersQuery, queryParams);
 
   const channelName = await getChannelName(client, channelId);
 
   for (const member of memberRows) {
+    // Create different notification format for webhooks vs user messages
+    const isWebhookMessage = !senderWorkspaceMemberId;
+    
     notifications.push({
       workspace_member_id: member.workspace_member_id,
       sender_workspace_member_id: senderWorkspaceMemberId,
       workspace_id: workspaceId,
       type: 'channel_message',
-      title: `New message in #${channelName}`,
-      message: `${senderName}: ${truncateMessage(messageText)}`,
+      title: isWebhookMessage 
+        ? `${senderName} activity in #${channelName}`
+        : `New message in #${channelName}`,
+      message: isWebhookMessage
+        ? truncateMessage(messageText)
+        : `${senderName}: ${truncateMessage(messageText)}`,
       related_message_id: messageId,
       related_channel_id: channelId,
     });

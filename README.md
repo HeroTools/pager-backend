@@ -82,6 +82,7 @@ This project follows a domain-driven architecture where functionality is organiz
   - `workspaces/` - Workspace management
   - `common/` - Shared utilities and types used across domains
   - `migration/` - Slack workspace migrations
+  - `webhooks/` - **Separate webhook service stack** for external integrations
 
 - **`supabase/`** - Supabase configuration, database migrations, and schema definitions
 - **`scripts/`** - Utility scripts for generating environment variables and upserting secrets to AWS Secrets Manager
@@ -140,6 +141,11 @@ npm run format
 | `npm run build`             | Build all Lambda functions          |
 | `npm run lint`              | Lint and fix TypeScript code        |
 | `npm run format`            | Format code with Prettier           |
+| `npm run webhooks:build`    | Build webhook functions only        |
+| `npm run webhooks:deploy:dev` | Deploy webhooks to dev (with notifications) |
+| `npm run webhooks:deploy:dev:setup` | Deploy webhooks to dev (first time, no notifications) |
+| `npm run webhooks:deploy:prod` | Deploy webhooks to prod (with notifications) |
+| `npm run webhooks:deploy:prod:setup` | Deploy webhooks to prod (first time, no notifications) |
 
 ### Environment Variables
 
@@ -170,6 +176,122 @@ These are used for CORS and redirecting to the frontend. Please update them in t
 | ----------------- | ------------------------ | ----------------------- |
 | `frontend-url`    | Frontend application URL | `http://localhost:3000` |
 | `allowed-origins` | CORS allowed origins     | `http://localhost:3000` |
+
+## 🔗 Webhooks Service
+
+The webhooks service is a **separate CloudFormation stack** that handles external integrations. It runs independently from the main API to provide isolation and scalability for webhook processing.
+
+### 📁 Webhooks Project Structure
+
+```
+webhooks/
+├── template.yaml           # SAM template for webhook stack
+├── samconfig.toml          # SAM configuration
+├── src/
+│   ├── handlers/           # Webhook endpoint handlers
+│   │   ├── webhook-handler.ts        # Generic/custom webhooks
+│   │   ├── github-webhook-handler.ts # GitHub integration
+│   │   ├── linear-webhook-handler.ts # Linear integration
+│   │   ├── jira-webhook-handler.ts   # Jira integration
+│   │   └── stripe-webhook-handler.ts # Stripe integration
+│   ├── processors/         # Message processing
+│   │   └── message-processor.ts     # SQS message processor
+│   └── types.ts           # Shared TypeScript types
+```
+
+### 🏗️ Webhooks Architecture
+
+1. **Webhook Handlers** - Receive HTTP webhooks from external services
+2. **SQS Queue** - Queues messages for processing (FIFO for guaranteed ordering)
+3. **Message Processor** - Processes queued messages and saves to database
+4. **Notification Integration** - Triggers notifications when webhook messages arrive
+
+### 🚀 Webhooks Deployment
+
+**⚠️ Important**: Deploy the **main stack first** before deploying webhooks, as webhooks depend on SSM parameters from the main stack.
+
+#### First-time Webhook Deployment
+
+```bash
+# 1. Deploy main stack first (if not already deployed)
+npm run deploy:dev:setup
+
+# 2. Deploy webhooks without notifications (first time)
+npm run webhooks:deploy:dev:setup
+
+# 3. Redeploy webhooks with notifications enabled
+npm run webhooks:deploy:dev
+```
+
+#### Regular Webhook Deployment
+
+```bash
+# Development
+npm run webhooks:deploy:dev
+
+# Production  
+npm run webhooks:deploy:prod
+```
+
+### 🔧 Webhook Configuration
+
+The webhook stack supports the following configuration options:
+
+| Parameter | Description | Default | Values |
+|-----------|-------------|---------|---------|
+| `Environment` | Target environment | `dev` | `dev`, `prod` |
+| `StackName` | CloudFormation stack name | `pager-webhooks-dev` | `pager-webhooks-dev`, `pager-webhooks-prod` |
+| `MainStackName` | Main API stack name | `unowned-dev` | `unowned`, `unowned-dev` |
+| `EnableNotifications` | Enable notification service integration | `false` | `true`, `false` |
+
+### 🌐 Webhook Endpoints
+
+Once deployed, the following webhook endpoints are available:
+
+| Service | Endpoint | Description |
+|---------|----------|-------------|
+| **Custom** | `POST /webhooks/custom/{webhookId}` | Generic webhook for custom integrations |
+| **GitHub** | `POST /webhooks/github/{webhookId}` | GitHub repository events |
+| **Linear** | `POST /webhooks/linear/{webhookId}` | Linear issue tracking |
+| **Jira** | `POST /webhooks/jira/{webhookId}` | Jira project management |
+| **Stripe** | `POST /webhooks/stripe/{webhookId}` | Stripe payment events |
+
+**Base URL Format**: `https://{api-id}.execute-api.us-east-2.amazonaws.com/{environment}`
+
+### 🔄 Message Processing Flow
+
+1. **Webhook Received** → Handler validates and queues message to SQS
+2. **SQS Trigger** → Message processor picks up queued messages  
+3. **Database Save** → Message saved to PostgreSQL database
+4. **Notifications** → Notification service notifies channel members
+5. **Real-time Broadcast** → Message broadcast via Supabase real-time
+
+### 🛠️ Webhook Development
+
+#### Local Testing
+```bash
+# Build webhooks locally
+npm run webhooks:build
+
+# Test with SAM Local (if needed)
+cd webhooks && sam local start-api
+```
+
+#### Adding New Webhook Integrations
+
+1. Create new handler in `src/handlers/`
+2. Add HTTP API route in `template.yaml`
+3. Implement message transformation logic
+4. Deploy with `npm run webhooks:deploy:dev`
+
+### 🔗 Cross-Stack Integration
+
+The webhook service integrates with the main API stack using **SSM Parameters**:
+
+- **Webhook API URL**: `/pager-webhooks-{env}/{env}/webhook-api-url`
+- **Notification Service ARN**: `/{main-stack}/{env}/notification-service-function-arn`
+
+This approach allows independent deployment and deletion of stacks without dependency issues.
 
 ## 🚀 Deployment
 
