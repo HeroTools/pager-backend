@@ -9,7 +9,7 @@ const isLocal = process.env.AWS_SAM_LOCAL === 'true';
 
 const webhookApiUrl = isLocal
   ? process.env.LOCAL_WEBHOOK_API_URL || 'http://localhost:3000'
-  : process.env.WEBHOOK_API_URL;
+  : `${process.env.WEBHOOK_API_URL}/${process.env.ENVIRONMENT}/webhooks`;
 
 const ALLOWED_SOURCE_TYPES = ['custom', 'github', 'linear', 'jira', 'stripe'] as const;
 type SourceType = (typeof ALLOWED_SOURCE_TYPES)[number];
@@ -251,7 +251,7 @@ async function listWebhooks(
   );
 
   // Add webhook URLs to each webhook
-  const webhooksWithUrls = result.rows.map(webhook => ({
+  const webhooksWithUrls = result.rows.map((webhook) => ({
     ...webhook,
     url: `${webhookApiUrl}/${webhook.source_type}/${webhook.id}`,
     total_requests: parseInt(webhook.total_requests) || 0,
@@ -397,7 +397,7 @@ async function updateWebhook(
     UPDATE webhooks
     SET ${updateFields.join(', ')}
     WHERE id = $${paramCount}
-    RETURNING id, name, source_type, channel_id, is_active, last_used_at, last_message_at, 
+    RETURNING id, name, source_type, channel_id, is_active, last_used_at, last_message_at,
               message_count, created_at, updated_at, secret_token, signing_secret, created_by_user_id
   `,
     updateValues,
@@ -408,11 +408,11 @@ async function updateWebhook(
   }
 
   const updatedWebhook = result.rows[0];
-  
+
   // Get additional info for complete response
   const detailsResult = await dbPool.query(
     `
-    SELECT 
+    SELECT
       u.name as created_by_name,
       c.name as channel_name,
       COUNT(wu.id) as total_requests
@@ -426,8 +426,12 @@ async function updateWebhook(
     [webhookId],
   );
 
-  const details = detailsResult.rows[0] || { created_by_name: null, channel_name: null, total_requests: 0 };
-  
+  const details = detailsResult.rows[0] || {
+    created_by_name: null,
+    channel_name: null,
+    total_requests: 0,
+  };
+
   // Generate the webhook URL
   const url = `${webhookApiUrl}/${updatedWebhook.source_type}/${updatedWebhook.id}`;
 
