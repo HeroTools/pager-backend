@@ -1,7 +1,11 @@
+import { LambdaClient } from '@aws-sdk/client-lambda';
 import { SQSEvent } from 'aws-lambda';
+import { invokeLambdaFunction } from '../../../common/helpers/invoke-lambda';
 import dbPool from '../../../common/utils/create-db-pool';
 import { supabase } from '../../../common/utils/supabase-client';
 import { QueuedMessage, SlackAttachment, SlackMessage } from '../types';
+
+const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-east-2' });
 
 export const handler = async (event: SQSEvent): Promise<void> => {
   const results = await Promise.allSettled(
@@ -62,6 +66,7 @@ async function processMessage(data: QueuedMessage): Promise<void> {
     await Promise.all([
       broadcastMessage(data, messageId, body, blocks, created_at),
       updateWebhookStats(data.webhookId),
+      notifyChannelMembers(data, messageId, body),
     ]);
   } catch (error) {
     await logProcessingError(data, error);
@@ -121,6 +126,43 @@ async function updateWebhookStats(webhookId: string): Promise<void> {
     );
   } catch (error) {
     console.error(`Failed to update webhook stats for ${webhookId}:`, error);
+  }
+}
+
+async function notifyChannelMembers(
+  data: QueuedMessage,
+  messageId: string,
+  messageText: string,
+): Promise<void> {
+  try {
+    if (!process.env.NOTIFICATION_SERVICE_FUNCTION_ARN) {
+      console.warn('NOTIFICATION_SERVICE_FUNCTION_ARN not configured, skipping notifications');
+      return;
+    }
+
+    const notificationPayload = {
+      messageId: messageId,
+      senderWorkspaceMemberId: null, // Webhook messages don't have a user sender
+      workspaceId: data.workspaceId,
+      channelId: data.channelId,
+      conversationId: undefined,
+      messageText: messageText,
+      parentMessageId: undefined,
+      threadId: undefined,
+      senderName: data.payload.username || 'Webhook',
+      mentionedWorkspaceMemberIds: [], // Webhooks don't support mentions currently
+      isWebhook: true, // Flag to indicate this is a webhook notification
+    };
+
+    console.log('Webhook notification payload:', notificationPayload);
+
+    await invokeLambdaFunction(
+      process.env.NOTIFICATION_SERVICE_FUNCTION_ARN,
+      notificationPayload,
+      lambdaClient,
+    );
+  } catch (error) {
+    console.error(`Failed to send notifications for webhook message ${messageId}:`, error);
   }
 }
 
