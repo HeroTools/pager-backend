@@ -9,7 +9,7 @@ const isLocal = process.env.AWS_SAM_LOCAL === 'true';
 
 const webhookApiUrl = isLocal
   ? process.env.LOCAL_WEBHOOK_API_URL || 'http://localhost:3000'
-  : `${process.env.WEBHOOK_API_URL}/${process.env.ENVIRONMENT}/webhooks`;
+  : process.env.WEBHOOK_API_URL;
 
 const ALLOWED_SOURCE_TYPES = ['custom', 'github', 'linear', 'jira', 'stripe'] as const;
 type SourceType = (typeof ALLOWED_SOURCE_TYPES)[number];
