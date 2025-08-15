@@ -52,7 +52,7 @@ Globals:
         PG_DATABASE: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-database:SecretString}}'
         PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-password:SecretString}}'
         PG_PORT: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-port:SecretString}}'
-        LOCAL_WEBHOOK_API_URL: !Sub 'https://f2b3turp1j.execute-api.us-east-2.amazonaws.com/${Environment}/webhooks'
+        LOCAL_WEBHOOK_API_URL: !Sub 'https://f2b3turp1j.execute-api.us-east-2.amazonaws.com/${Environment}'
         VERCEL_PROJECTS: pager-frontend
         ALLOW_VERCEL_PREVIEWS: true
         FRONTEND_URL: !FindInMap
@@ -1757,7 +1757,7 @@ Resources:
       Handler: app.handler
       Environment:
         Variables:
-          WEBHOOK_API_URL: !Sub '{{resolve:ssm:/pager-webhooks-${Environment}/${Environment}/webhook-api-url}}'
+          WEBHOOK_API_URL: https://webhooks.pager.team
       Events:
         ApiEventList:
           Type: Api

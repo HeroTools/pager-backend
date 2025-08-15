@@ -108,7 +108,7 @@ Resources:
           Type: HttpApi
           Properties:
             ApiId: !Ref WebhookApi
-            Path: /webhooks/custom/{webhookId}
+            Path: /custom/{webhookId}
             Method: POST
     Metadata:
       BuildMethod: esbuild
@@ -138,7 +138,7 @@ Resources:
           Type: HttpApi
           Properties:
             ApiId: !Ref WebhookApi
-            Path: /webhooks/github/{webhookId}
+            Path: /github/{webhookId}
             Method: POST
     Metadata:
       BuildMethod: esbuild
@@ -168,7 +168,7 @@ Resources:
           Type: HttpApi
           Properties:
             ApiId: !Ref WebhookApi
-            Path: /webhooks/linear/{webhookId}
+            Path: /linear/{webhookId}
             Method: POST
     Metadata:
       BuildMethod: esbuild
@@ -198,7 +198,7 @@ Resources:
           Type: HttpApi
           Properties:
             ApiId: !Ref WebhookApi
-            Path: /webhooks/jira/{webhookId}
+            Path: /jira/{webhookId}
             Method: POST
     Metadata:
       BuildMethod: esbuild
@@ -228,7 +228,7 @@ Resources:
           Type: HttpApi
           Properties:
             ApiId: !Ref WebhookApi
-            Path: /webhooks/stripe/{webhookId}
+            Path: /stripe/{webhookId}
             Method: POST
     Metadata:
       BuildMethod: esbuild
@@ -246,7 +246,7 @@ Resources:
       Handler: message-processor.handler
       Environment:
         Variables:
-          NOTIFICATION_SERVICE_FUNCTION_ARN: !If 
+          NOTIFICATION_SERVICE_FUNCTION_ARN: !If
             - NotificationsEnabled
             - !Sub '{{resolve:ssm:/${MainStackName}/${Environment}/notification-service-function-arn}}'
             - ''
