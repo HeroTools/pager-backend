@@ -29,7 +29,7 @@ Mappings:
     dev:
       origins: http://localhost:3000,https://pager-dev.vercel.app
     prod:
-      origins: https://app.pager.team
+      origins: https://app.pager.team,http://localhost:3456
 
 Globals:
   Function:
@@ -254,7 +254,7 @@ Resources:
             Resource: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*
       Environment:
         Variables:
-          NOTIFICATION_SERVICE_FUNCTION_ARN: !GetAtt NotificationServiceFunction.Arn
+          NOTIFICATION_SERVICE_FUNCTION_ARN: unowned-dev-NotificationServiceFunction-R3nf7dOf9FUt
       Events:
         SendChannelMessage:
           Type: Api
