@@ -1,11 +1,14 @@
-import { run } from '@openai/agents';
+import { hostedMcpTool, run } from '@openai/agents';
 import type { APIGatewayProxyEventV2, Context } from 'aws-lambda';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
 import { getUserIdFromToken } from '../../../common/helpers/auth';
 import dbPool from '../../../common/utils/create-db-pool';
-import { conversationAgent } from './agents';
+import { conversationAgent, createMcpEnabledAgent } from './agents';
 import { getOrCreateConversation, saveAiMessage } from './helpers/database-helpers';
+
+// AWS Lambda streaming globals
+declare const awslambda: any;
 
 const ChatRequest = z.object({
   message: z.string().min(1),
@@ -18,66 +21,98 @@ const ChatRequest = z.object({
   agentId: z.string().uuid().describe('The AI agent to chat with'),
 });
 
-function getHumanFriendlyToolMessage(
-  toolName: string,
-  phase: 'start' | 'thinking' | 'end',
-): string {
-  const toolMap: Record<string, { thinking: string; start: string; end: string }> = {
-    search_workspace_messages: {
-      thinking: 'Searching through your messages...',
-      start: 'Looking through your conversation history',
-      end: 'Found relevant messages',
-    },
-    get_conversation_context: {
-      thinking: 'Getting conversation details...',
-      start: 'Reviewing our conversation',
-      end: 'Caught up on our conversation',
-    },
-    search_workspace_channels: {
-      thinking: 'Searching through channels...',
-      start: 'Looking through your channels',
-      end: 'Found channel information',
-    },
-    get_workspace_members: {
-      thinking: 'Looking up team members...',
-      start: "Checking who's in your workspace",
-      end: 'Found team member information',
-    },
-    create_message: {
-      thinking: 'Creating a message...',
-      start: 'Writing a message',
-      end: 'Message created',
-    },
-    unknown: {
-      thinking: 'Working on something...',
-      start: 'Looking something up',
-      end: 'Finished looking that up',
-    },
-  };
-
-  const tool = toolMap[toolName] || toolMap.unknown;
-  return tool[phase];
-}
-
-function writeSSE(responseStream: any, data: any, event?: string, id?: string) {
+async function getMcpToolsForAgent(client: PoolClient, agentId: string, workspaceId: string) {
   try {
-    let sseData = '';
+    const query = `
+      SELECT
+        mc.server_url,
+        mc.server_label,
+        mc.auth_headers,
+        mc.oauth_config,
+        mc.require_approval,
+        mc.allowed_tools,
+        mc.id as connection_id
+      FROM agent_mcp_access ama
+      JOIN mcp_connections mc ON ama.mcp_connection_id = mc.id
+      WHERE ama.agent_id = $1
+        AND mc.workspace_id = $2
+        AND ama.is_enabled = true
+        AND mc.status = 'active'
+    `;
 
-    if (id) {
-      sseData += `id: ${id}\n`;
+    const result = await client.query(query, [agentId, workspaceId]);
+
+    const mcpTools = [];
+    const failedConnections = [];
+
+    for (const row of result.rows) {
+      try {
+        const toolConfig: any = {
+          serverLabel: row.server_label,
+          serverUrl: row.server_url,
+        };
+
+        // Handle OAuth tokens for providers like Linear
+        if (row.oauth_config?.access_token) {
+          toolConfig.headers = {
+            'Authorization': `Bearer ${row.oauth_config.access_token}`
+          };
+        } else if (row.auth_headers) {
+          toolConfig.headers = row.auth_headers;
+        }
+
+        if (row.require_approval) {
+          toolConfig.requireApproval = 'always';
+        }
+
+        if (row.allowed_tools && row.allowed_tools.length > 0) {
+          toolConfig.allowedTools = row.allowed_tools;
+        }
+        console.log(toolConfig);
+        // Test the MCP connection before adding it
+        const mcpTool = hostedMcpTool(toolConfig);
+
+        console.log(mcpTool);
+
+        // Add a connection test with timeout
+        const connectionTest = await Promise.race([
+          // Try to initialize the tool (this will test the connection)
+          Promise.resolve(mcpTool),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('MCP connection timeout')), 5000),
+          ),
+        ]);
+
+        console.log(connectionTest);
+
+        mcpTools.push(mcpTool);
+        console.log(`✅ Successfully connected to MCP server: ${row.server_label}`);
+      } catch (error) {
+        console.error(`❌ Failed to connect to MCP server ${row.server_label}:`, error);
+        failedConnections.push({
+          label: row.server_label,
+          error: error.message,
+          connectionId: row.connection_id,
+        });
+      }
     }
 
-    if (event) {
-      sseData += `event: ${event}\n`;
+    if (failedConnections.length > 0) {
+      console.warn(`⚠️ ${failedConnections.length} MCP connections failed:`, failedConnections);
     }
 
-    sseData += `data: ${JSON.stringify(data)}\n\n`;
-
-    if (!responseStream.destroyed) {
-      responseStream.write(sseData);
-    }
+    return {
+      tools: mcpTools,
+      failedConnections,
+      totalAttempted: result.rows.length,
+    };
   } catch (error) {
-    console.error('Error writing SSE:', error);
+    console.error('Error fetching MCP tools for agent:', error);
+    return {
+      tools: [],
+      failedConnections: [],
+      totalAttempted: 0,
+    };
   }
 }
 
@@ -91,7 +126,7 @@ export const streamHandler = async (
   let streamEnded = false;
 
   const originalTimeout = context.getRemainingTimeInMillis();
-  const cleanupTimeout = originalTimeout - 4000; // Reserve 4s for cleanup, max 300s total
+  const cleanupTimeout = originalTimeout - 4000;
 
   responseStream = awslambda.HttpResponseStream.from(responseStream, {
     statusCode: 200,
@@ -102,7 +137,6 @@ export const streamHandler = async (
     },
   });
 
-  // Ensure stream ends properly in all scenarios
   const endStream = (error?: any) => {
     if (streamEnded) return;
     streamEnded = true;
@@ -135,7 +169,6 @@ export const streamHandler = async (
     }
   };
 
-  // Set cleanup timeout
   const cleanupTimer = setTimeout(() => {
     console.warn('Lambda cleanup timeout reached, forcing cleanup');
     endStream(new Error('Request timeout'));
@@ -164,7 +197,6 @@ export const streamHandler = async (
     const body = ChatRequest.parse(requestBody);
     console.log('✅ Request validation passed');
 
-    // Get database connection with timeout
     try {
       client = (await Promise.race([
         dbPool.connect(),
@@ -231,7 +263,6 @@ export const streamHandler = async (
 
     writeSSE(responseStream, { userMessage, conversation }, 'user_message', Date.now().toString());
 
-    // Emit thinking started event
     writeSSE(
       responseStream,
       {
@@ -244,55 +275,156 @@ export const streamHandler = async (
 
     const startTime = Date.now();
 
-    // Create OpenAI stream with timeout
+    // Get MCP tools for this agent with better error handling
+    const mcpResult = await getMcpToolsForAgent(client, body.agentId, workspaceId);
+    const { tools: mcpTools, failedConnections, totalAttempted } = mcpResult;
+
+    console.log(`📡 MCP Status: ${mcpTools.length}/${totalAttempted} connections successful`);
+
+    if (failedConnections.length > 0) {
+      writeSSE(
+        responseStream,
+        {
+          status: 'warning',
+          message: `Some external tools are unavailable (${failedConnections.length}/${totalAttempted} failed). Continuing with available tools...`,
+          failedConnections: failedConnections.map((fc) => fc.label),
+        },
+        'mcp_warning',
+        Date.now().toString(),
+      );
+    }
+
+    // Choose the right agent based on whether MCP tools are available
+    const selectedAgent = mcpTools.length > 0 ? createMcpEnabledAgent(mcpTools) : conversationAgent;
+
+    // Prepare system prompt with MCP status information
+    const mcpStatusInfo =
+      mcpTools.length > 0
+        ? `
+
+IMPORTANT: You have direct access to ${mcpTools.length} external tools via MCP connections.${
+            failedConnections.length > 0
+              ? ` Note: ${failedConnections.length} MCP connections failed (${failedConnections.map((fc) => fc.label).join(', ')}), so some external tools may be unavailable.`
+              : ''
+          }
+
+When users ask about external services, use the MCP tools DIRECTLY. Only route to search_specialist for workspace/internal message searches, and to analysis_specialist for structuring data you've already retrieved.`
+        : failedConnections.length > 0
+          ? `
+
+Note: External tool connections failed (${failedConnections.map((fc) => fc.label).join(', ')}). You'll need to rely on internal workspace tools and inform the user about the limitations.`
+          : '';
+
     try {
+      const runConfig: any = {
+        stream: true,
+        context: {
+          workspaceId,
+          userId,
+          conversation_id: conversation.id,
+          agentId: body.agentId,
+        },
+        // Reduce retries and increase timeout for MCP rate limits
+        maxRetries: 1,
+        timeoutMs: 45000, // 45 second timeout for MCP calls
+        retryBackoff: 'exponential', // Add exponential backoff
+      };
+
       openAIStream = await Promise.race([
         run(
-          conversationAgent,
+          selectedAgent,
           [
             {
               role: 'system',
-              content: `You are ${agent.name}. ${agent.system_prompt || ''}. Current conversation_id: ${conversation.id}. Always use this ID when calling get_conversation_context.`,
+              content: `You are ${agent.name}. ${agent.system_prompt + '.' || ''} Current conversation_id: ${conversation.id}. Always use this ID when calling get_conversation_context.${mcpStatusInfo}`,
             },
             {
               role: 'user',
               content: body.message,
             },
           ],
-          {
-            stream: true,
-            context: {
-              workspaceId,
-              userId,
-              conversation_id: conversation.id,
-              agentId: body.agentId,
-            },
-          },
+          runConfig,
         ),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('OpenAI stream creation timeout')), 10000),
+          setTimeout(() => reject(new Error('OpenAI stream creation timeout')), 15000),
         ),
       ]);
     } catch (error) {
       console.error('❌ OpenAI stream creation failed:', error);
-      endStream(error);
-      return;
+
+      // Check if it's a rate limiting error
+      if (error.message?.includes('429') || error.status === 429) {
+        console.log('⚠️ Rate limit encountered, suggesting user wait before retry');
+        endStream(new Error('Rate limit exceeded. Linear API is temporarily throttling requests. Please wait 30-60 seconds before trying again.'));
+      } else if (
+        error.message?.includes('MCP') ||
+        error.message?.includes('external_connector_error')
+      ) {
+        const runConfig: any = {
+          stream: true,
+          context: {
+            workspaceId,
+            userId,
+            conversation_id: conversation.id,
+            agentId: body.agentId,
+          },
+          // Reduce retries and increase timeout for MCP rate limits
+          maxRetries: 1,
+          timeoutMs: 45000, // 45 second timeout for MCP calls
+          retryBackoff: 'exponential', // Add exponential backoff
+        };
+        // MCP tool error - fallback to regular agent
+        console.log('🔄 MCP tools failed, falling back to conversation agent...');
+        try {
+          openAIStream = await run(
+            conversationAgent,
+            [
+              {
+                role: 'system',
+                content: `You are ${agent.name}. ${agent.system_prompt || ''}. Current conversation_id: ${conversation.id}. Always use this ID when calling get_conversation_context.
+
+Note: External tool connections are currently unavailable. You can still help with workspace searches and general assistance.`,
+              },
+              {
+                role: 'user',
+                content: body.message,
+              },
+            ],
+            runConfig,
+          );
+
+          writeSSE(
+            responseStream,
+            {
+              status: 'fallback',
+              message: 'External tools unavailable, using internal capabilities...',
+            },
+            'agent_thinking',
+            Date.now().toString(),
+          );
+        } catch (fallbackError) {
+          console.error('❌ Fallback agent also failed:', fallbackError);
+          endStream(fallbackError);
+          return;
+        }
+      } else {
+        endStream(error);
+        return;
+      }
     }
 
+    // Rest of your streaming logic remains the same...
     let assistantReply = '';
     let toolCallCount = 0;
     let hasStartedGenerating = false;
 
-    // Track processed text deltas to avoid duplicates
     const processedTextDeltas = new Set();
     const processedToolCalls = new Set();
     const processedThinkingEvents = new Set();
 
-    // Process the main stream with proper error handling and timeout
     try {
       const streamPromise = (async () => {
         for await (const chunk of openAIStream) {
-          // Check if we should stop processing
           if (streamEnded) {
             console.log('Stream processing stopped due to cleanup');
             break;
@@ -300,7 +432,6 @@ export const streamHandler = async (
 
           const timestamp = Date.now().toString();
 
-          // Handle raw model stream events (prioritize this format)
           if (chunk.type === 'raw_model_stream_event' && chunk.data) {
             const eventType = chunk.data.event?.type;
             const sequenceNumber = chunk.data.event?.sequence_number;
@@ -372,11 +503,13 @@ export const streamHandler = async (
             }
           }
 
-          // Handle tool called events
+          // Handle tool called events with error handling
           if (chunk.name === 'tool_called' && chunk.item) {
             const toolCall = chunk.item.rawItem;
             const toolCallId = toolCall.callId;
             const startKey = `tool-start-${toolCallId}`;
+
+            console.log(`🔧 Tool called: ${toolCall.name} (ID: ${toolCallId})`);
 
             if (!processedToolCalls.has(startKey)) {
               processedToolCalls.add(startKey);
@@ -407,14 +540,19 @@ export const streamHandler = async (
             }
           }
 
-          // Handle tool output events
+          // Handle tool output events with error handling
           if (chunk.name === 'tool_output' && chunk.item) {
             const toolOutput = chunk.item.rawItem;
             const toolCallId = toolOutput.callId;
             const endKey = `tool-end-${toolCallId}`;
 
+            console.log(`✅ Tool output received: ${toolOutput.name} (ID: ${toolCallId})`);
+
             if (!processedToolCalls.has(endKey)) {
               processedToolCalls.add(endKey);
+
+              // Check for tool errors
+              const hasError = toolOutput.output?.includes('Error') || toolOutput.error;
 
               writeSSE(
                 responseStream,
@@ -423,7 +561,10 @@ export const streamHandler = async (
                   toolName: toolOutput.name || 'unknown',
                   result: toolOutput.output,
                   callId: toolCallId,
-                  message: getHumanFriendlyToolMessage(toolOutput.name, 'end'),
+                  hasError,
+                  message: hasError
+                    ? getHumanFriendlyToolMessage(toolOutput.name, 'error')
+                    : getHumanFriendlyToolMessage(toolOutput.name, 'end'),
                 },
                 'tool_call_end',
                 timestamp,
@@ -433,7 +574,9 @@ export const streamHandler = async (
                 responseStream,
                 {
                   status: 'processing',
-                  message: 'Got what I needed, thinking about your question...',
+                  message: hasError
+                    ? 'Encountered an issue, but continuing...'
+                    : 'Got what I needed, thinking about your question...',
                 },
                 'agent_thinking',
                 timestamp,
@@ -443,7 +586,6 @@ export const streamHandler = async (
         }
       })();
 
-      // Wait for stream processing with timeout
       await Promise.race([
         streamPromise,
         new Promise((_, reject) =>
@@ -458,15 +600,18 @@ export const streamHandler = async (
       }
     }
 
-    // Wait for the stream to complete with timeout
+    // Wait for the full run to complete, including all tool calls
+    let finalResult;
     try {
       if (openAIStream && !streamEnded) {
-        await Promise.race([
-          openAIStream.completed,
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Stream completion timeout')), 5000),
+        console.log('⏳ Waiting for OpenAI stream to fully complete...');
+        finalResult = await Promise.race([
+          openAIStream.finalResult || openAIStream.completed,
+          new Promise(
+            (_, reject) => setTimeout(() => reject(new Error('Stream completion timeout')), 45000), // Increased timeout for MCP calls
           ),
         ]);
+        console.log('✅ OpenAI stream completed');
       }
     } catch (error) {
       console.error('Stream completion error:', error);
@@ -475,11 +620,13 @@ export const streamHandler = async (
     if (streamEnded) return;
 
     const processingTime = Date.now() - startTime;
-    const finalResponse = assistantReply || (openAIStream?.finalOutput ?? '');
+    const finalResponse =
+      assistantReply || (finalResult?.output ?? openAIStream?.finalOutput ?? '');
 
-    // Get final tool calls information
-    const finalToolCalls = openAIStream?.toolCalls || [];
+    const finalToolCalls = finalResult?.toolCalls || openAIStream?.toolCalls || [];
     toolCallCount = finalToolCalls.length;
+
+    console.log(`🔧 Final tool calls count: ${finalToolCalls.length}`);
 
     const agentMessage = await saveAiMessage(
       client,
@@ -491,7 +638,6 @@ export const streamHandler = async (
       body.agentId,
     );
 
-    // Send completion thinking event
     writeSSE(
       responseStream,
       {
@@ -504,7 +650,6 @@ export const streamHandler = async (
       Date.now().toString(),
     );
 
-    // Send final completion with all the data needed for cache updates
     writeSSE(
       responseStream,
       {
@@ -519,6 +664,9 @@ export const streamHandler = async (
             name: tc.function?.name,
             id: tc.id,
           })),
+          mcpToolsCount: mcpTools.length,
+          mcpFailures: failedConnections.length,
+          mcpStatus: mcpTools.length > 0 ? 'active' : 'fallback',
         },
       },
       'agent_message_complete',
@@ -530,12 +678,9 @@ export const streamHandler = async (
     console.error('Streaming chat error:', error);
     endStream(error);
   } finally {
-    // Clear the cleanup timer
     clearTimeout(cleanupTimer);
 
-    // Cleanup resources
     try {
-      // Close OpenAI stream if it exists
       if (openAIStream && typeof openAIStream.close === 'function') {
         await openAIStream.close();
       }
@@ -543,7 +688,6 @@ export const streamHandler = async (
       console.error('Error closing OpenAI stream:', error);
     }
 
-    // Release database connection
     if (client) {
       try {
         client.release();
@@ -552,11 +696,62 @@ export const streamHandler = async (
       }
     }
 
-    // Ensure stream is ended
     if (!streamEnded) {
       endStream();
     }
   }
 };
+
+function getHumanFriendlyToolMessage(
+  toolName: string,
+  phase: 'start' | 'thinking' | 'end' | 'error',
+): string {
+  const toolMap: Record<string, { thinking: string; start: string; end: string; error: string }> = {
+    search_workspace_messages: {
+      thinking: 'Searching through your messages...',
+      start: 'Looking through your conversation history',
+      end: 'Found relevant messages',
+      error: 'Had trouble searching messages, but continuing...',
+    },
+    get_conversation_context: {
+      thinking: 'Getting conversation details...',
+      start: 'Reviewing our conversation',
+      end: 'Caught up on our conversation',
+      error: 'Had trouble getting conversation context, but continuing...',
+    },
+    // MCP tools - generic messages since we don't know the exact tool names
+    unknown: {
+      thinking: 'Working on something...',
+      start: 'Looking something up',
+      end: 'Finished looking that up',
+      error: 'Encountered an issue with external tool, but continuing...',
+    },
+  };
+
+  const tool = toolMap[toolName] || toolMap.unknown;
+  return tool[phase];
+}
+
+function writeSSE(responseStream: any, data: any, event?: string, id?: string) {
+  try {
+    let sseData = '';
+
+    if (id) {
+      sseData += `id: ${id}\n`;
+    }
+
+    if (event) {
+      sseData += `event: ${event}\n`;
+    }
+
+    sseData += `data: ${JSON.stringify(data)}\n\n`;
+
+    if (!responseStream.destroyed) {
+      responseStream.write(sseData);
+    }
+  } catch (error) {
+    console.error('Error writing SSE:', error);
+  }
+}
 
 export const handler = awslambda.streamifyResponse(streamHandler);

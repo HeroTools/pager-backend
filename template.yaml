@@ -30,6 +30,11 @@ Mappings:
       origins: http://localhost:3000,https://pager-dev.vercel.app
     prod:
       origins: https://app.pager.team
+  ApiDomain:
+    dev:
+      domain: https://l7k9dtau97.execute-api.us-east-2.amazonaws.com/Dev
+    prod:
+      domain: https://api.pager.team
 
 Globals:
   Function:
@@ -53,6 +58,8 @@ Globals:
         PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-password:SecretString}}'
         PG_PORT: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-port:SecretString}}'
         LOCAL_WEBHOOK_API_URL: !Sub 'https://f2b3turp1j.execute-api.us-east-2.amazonaws.com/${Environment}'
+        LINEAR_CLIENT_ID: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/linear-client-id:SecretString}}'
+        LINEAR_CLIENT_SECRET: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/linear-client-secret:SecretString}}'
         VERCEL_PROJECTS: pager-frontend
         ALLOW_VERCEL_PREVIEWS: true
         FRONTEND_URL: !FindInMap
@@ -1651,6 +1658,187 @@ Resources:
         Target: es2024
         EntryPoints:
           - get-conversation-messages/app.ts
+
+  # MCP CONNECTIONS - GET
+  GetMcpConnectionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/mcp
+      Handler: get/app.handler
+      Events:
+        GetMcpConnections:
+          Type: Api
+          Properties:
+            Path: /mcp/{workspaceId}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get/app.ts
+
+  # MCP CONNECTIONS - CREATE
+  CreateMcpConnectionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/mcp
+      Handler: create/app.handler
+      Environment:
+        Variables:
+          API_DOMAIN: !FindInMap [ApiDomain, !Ref Environment, domain]
+      Events:
+        CreateMcpConnection:
+          Type: Api
+          Properties:
+            Path: /mcp/{workspaceId}
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - create/app.ts
+
+  # MCP CONNECTIONS - UPDATE
+  UpdateMcpConnectionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/mcp
+      Handler: update/app.handler
+      Events:
+        UpdateMcpConnection:
+          Type: Api
+          Properties:
+            Path: /mcp/{workspaceId}/{connectionId}
+            Method: put
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - update/app.ts
+
+  # MCP CONNECTIONS - DELETE
+  DeleteMcpConnectionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/mcp
+      Handler: delete/app.handler
+      Events:
+        DeleteMcpConnection:
+          Type: Api
+          Properties:
+            Path: /mcp/{workspaceId}/{connectionId}
+            Method: delete
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - delete/app.ts
+
+  # MCP OAUTH CALLBACK
+  McpOAuthCallbackFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/mcp
+      Handler: oauth-callback/app.handler
+      Environment:
+        Variables:
+          API_DOMAIN: !FindInMap [ApiDomain, !Ref Environment, domain]
+          FRONTEND_URL: !FindInMap [FrontendUrls, !Ref Environment, url]
+      Events:
+        McpOAuthCallback:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/mcp/oauth/callback
+            Method: get
+            RestApiId: !Ref MainApi
+        McpOAuthCallbackSimplified:
+          Type: Api
+          Properties:
+            Path: /mcp/oauth/callback
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - oauth-callback/app.ts
+
+  # MCP OAUTH REFRESH TOKEN
+  McpRefreshTokenFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/mcp
+      Handler: refresh-token/app.handler
+      Events:
+        McpRefreshToken:
+          Type: Api
+          Properties:
+            Path: /mcp/{workspaceId}/{connectionId}/refresh-token
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - refresh-token/app.ts
+
+  # AGENT MCP ACCESS - GET
+  GetAgentMcpAccessFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/agents
+      Handler: get-mcp-access/app.handler
+      Events:
+        GetAgentMcpAccess:
+          Type: Api
+          Properties:
+            Path: /agents/{workspaceId}/{agentId}/mcp-access
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get-mcp-access/app.ts
+
+  # AGENT MCP ACCESS - UPDATE
+  UpdateAgentMcpAccessFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/agents
+      Handler: update-mcp-access/app.handler
+      Events:
+        UpdateAgentMcpAccess:
+          Type: Api
+          Properties:
+            Path: /agents/{workspaceId}/{agentId}/mcp-access
+            Method: put
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - update-mcp-access/app.ts
 
   MigrationQueue:
     Type: AWS::SQS::Queue
