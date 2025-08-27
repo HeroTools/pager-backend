@@ -27,9 +27,9 @@ Mappings:
       url: 'https://app.pager.team'
   AllowOrigins:
     dev:
-      origins: http://localhost:3000,https://pager-dev.vercel.app
+      origins: http://localhost:3000,https://pager-dev.vercel.app,http://localhost:3456
     prod:
-      origins: https://app.pager.team
+      origins: https://app.pager.team,http://localhost:3456
 
 Globals:
   Function:
