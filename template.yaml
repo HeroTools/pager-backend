@@ -29,7 +29,7 @@ Mappings:
     dev:
       origins: http://localhost:3000,https://pager-dev.vercel.app
     prod:
-      origins: https://app.pager.team
+      origins: https://app.pager.team,http://localhost:3456
 
 Globals:
   Function:
@@ -52,6 +52,7 @@ Globals:
         PG_DATABASE: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-database:SecretString}}'
         PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-password:SecretString}}'
         PG_PORT: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-port:SecretString}}'
+        COMPOSIO_API_KEY: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/composio-api-key:SecretString}}'
         LOCAL_WEBHOOK_API_URL: !Sub 'https://f2b3turp1j.execute-api.us-east-2.amazonaws.com/${Environment}'
         VERCEL_PROJECTS: pager-frontend
         ALLOW_VERCEL_PREVIEWS: true
@@ -1796,6 +1797,26 @@ Resources:
         Target: es2024
         EntryPoints:
           - app.ts
+
+  LinearAuthCallbackFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/integrations/linear-auth
+      Handler: callback.handler
+      Events:
+        LinearAuthCallback:
+          Type: Api
+          Properties:
+            Path: /integrations/linear/callback
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - callback.ts
 
 Outputs:
   # Function URL for streaming

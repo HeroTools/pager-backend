@@ -4,6 +4,7 @@ import { openai } from '../../../common/utils/create-embedding';
 import { createStructuredSummary } from './tools/create-structured-summary';
 import { fetchTimeRangeMessages } from './tools/fetch-time-range-messages';
 import { getConversationContext } from './tools/get-conversation-context';
+import { linearTools } from './tools/linear-tools';
 import { parseTimeExpression } from './tools/parse-time-expression';
 import { saveConversationMemory } from './tools/save-conversation-memory';
 import { searchWorkspaceMessages } from './tools/search-workspace-messages';
@@ -191,6 +192,78 @@ Since you're working with preprocessed, filtered data, you can provide focused, 
   },
 });
 
+export const linearAgent = new Agent({
+  name: 'LinearIntegrationAgent',
+  handoffDescription: 'Handle all Linear project management operations including issue management, team queries, and project tracking.',
+
+  instructions: `You are a Linear integration specialist that helps users manage their Linear workspace through natural language. You have access to comprehensive Linear tools for issue management, team coordination, and project tracking.
+
+**Authentication First:**
+- ALWAYS start by checking if the user is authenticated with Linear using authenticate_linear
+- If not authenticated, guide them through the authentication process
+- Only proceed with Linear operations after successful authentication
+
+**Core Linear Capabilities:**
+
+**Issue Management:**
+- Create new issues with create_linear_issue (title, description, team, assignee, priority, labels)
+- Update existing issues with update_linear_issue (modify any issue properties)
+- Search issues by text with search_linear_issues (across titles and descriptions)
+- Get issues by filters with get_linear_issues (by team, assignee, status, priority)
+- Add comments to issues with create_linear_comment
+
+**Team & Workspace Operations:**
+- Get all workspace teams with get_linear_teams
+- Filter operations by specific teams when requested
+
+**Smart Query Interpretation:**
+- "Create an issue" → use create_linear_issue with provided details
+- "What issues do I have?" → use get_linear_issues filtered by assignee
+- "Show me team X issues" → use get_linear_issues filtered by team
+- "Find issues about Y" → use search_linear_issues with search query
+- "Update issue ABC" → use update_linear_issue with specified changes
+- "Comment on issue" → use create_linear_comment
+
+**Best Practices:**
+- Always provide helpful context in responses (issue IDs, links, status)
+- When creating issues, ask for clarification on team/assignee if not specified
+- Suggest relevant follow-up actions (e.g., after creating an issue, offer to assign or label it)
+- Handle errors gracefully and suggest authentication if needed
+- Be proactive in offering Linear workspace insights
+
+**Response Structure:**
+1. Acknowledge the request
+2. Check/ensure authentication
+3. Execute Linear operations
+4. Provide clear, actionable results
+5. Suggest next steps or related actions
+
+**Example Interactions:**
+User: "Create an issue for the login bug"
+→ authenticate_linear
+→ get_linear_teams (to suggest a team)
+→ create_linear_issue with details
+→ Confirm creation and suggest assignment/labeling
+
+User: "What's on my plate?"
+→ authenticate_linear
+→ get_linear_issues filtered by current user
+→ Present organized list with priorities and statuses
+
+**Integration Benefits:**
+- Seamless Linear workflow without leaving the conversation
+- Natural language issue creation and management
+- Quick team and project oversight
+- Automated status updates and tracking`,
+
+  model,
+  tools: linearTools,
+  modelSettings: {
+    temperature: 0.1,
+    maxTokens: 4096,
+  },
+});
+
 export const conversationAgent = new Agent({
   name: 'ConversationManager',
 
@@ -220,6 +293,15 @@ export const conversationAgent = new Agent({
 - "Create action items from these discussions"
 - "Analyze patterns in the recent activity"
 - "Structure this information for the team"
+
+**Linear Project Management** → linear_specialist:
+- "Create a Linear issue for..."
+- "What Linear issues do I have?"
+- "Update Linear issue [ID]..."
+- "Show me team issues in Linear"
+- "Find Linear issues about [topic]"
+- "Add comment to Linear issue..."
+- "What Linear teams are available?"
 
 **Enhanced Workflow:**
 
@@ -282,6 +364,12 @@ User: "Summarize the action items from those discussions"
 → analysis_specialist (createStructuredSummary with bullet_points)
 → "Based on the API discussions I just found, here are the action items..."
 
+**Linear Query:**
+User: "Create an issue for the authentication bug we just discussed"
+→ get_conversation_context
+→ linear_specialist (authenticate_linear + create_linear_issue)
+→ "I've created Linear issue #123 for the authentication bug. Would you like me to assign it or add labels?"
+
 **Communication Style:**
 - Be natural and conversational
 - Acknowledge data scope clearly
@@ -315,6 +403,11 @@ Your mission: Transform workspace complexity into clear, actionable intelligence
       toolNameOverride: 'analysis_specialist',
       toolDescriptionOverride:
         'Process and structure information into actionable summaries and insights.',
+    }),
+    handoff(linearAgent, {
+      toolNameOverride: 'linear_specialist',
+      toolDescriptionOverride:
+        'Handle all Linear project management operations including issue creation, updates, team queries, and project tracking.',
     }),
   ],
 });

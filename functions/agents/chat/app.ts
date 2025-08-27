@@ -6,6 +6,7 @@ import { getUserIdFromToken } from '../../../common/helpers/auth';
 import dbPool from '../../../common/utils/create-db-pool';
 import { conversationAgent } from './agents';
 import { getOrCreateConversation, saveAiMessage } from './helpers/database-helpers';
+import { initializeMCPServers, cleanupMCPServers } from './mcp/initialize';
 
 const ChatRequest = z.object({
   message: z.string().min(1),
@@ -81,6 +82,9 @@ function writeSSE(responseStream: any, data: any, event?: string, id?: string) {
   }
 }
 
+// Initialize MCP servers on Lambda cold start
+let mcpInitialized = false;
+
 export const streamHandler = async (
   event: APIGatewayProxyEventV2,
   responseStream: any,
@@ -89,6 +93,16 @@ export const streamHandler = async (
   let client: PoolClient | null = null;
   let openAIStream: any = null;
   let streamEnded = false;
+
+  // Initialize MCP servers if not already done
+  if (!mcpInitialized) {
+    try {
+      await initializeMCPServers();
+      mcpInitialized = true;
+    } catch (error) {
+      console.error('MCP initialization failed, continuing without MCP:', error);
+    }
+  }
 
   const originalTimeout = context.getRemainingTimeInMillis();
   const cleanupTimeout = originalTimeout - 4000; // Reserve 4s for cleanup, max 300s total
@@ -515,7 +529,7 @@ export const streamHandler = async (
           processingTime,
           toolCallsCount: finalToolCalls.length,
           agentName: agent.name,
-          toolCallsUsed: finalToolCalls.map((tc) => ({
+          toolCallsUsed: finalToolCalls.map((tc: any) => ({
             name: tc.function?.name,
             id: tc.id,
           })),
