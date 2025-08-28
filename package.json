@@ -5,10 +5,12 @@
   "author": "HeroTools",
   "license": "Apache-2.0",
   "dependencies": {
+    "@aws-sdk/client-chime-sdk-meetings": "^3.876.0",
     "@aws-sdk/client-lambda": "^3.851.0",
     "@aws-sdk/client-secrets-manager": "^3.848.0",
     "@aws-sdk/client-sqs": "^3.848.0",
     "@aws-sdk/client-ssm": "^3.849.0",
+    "@aws-sdk/client-transcribe": "^3.851.0",
     "@aws-sdk/credential-provider-ini": "^3.848.0",
     "@openai/agents": "^0.0.13",
     "@openai/agents-core": "^0.0.13",

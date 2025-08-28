@@ -1797,6 +1797,214 @@ Resources:
         EntryPoints:
           - app.ts
 
+  # CREATE HUDDLE
+  CreateHuddleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/huddles
+      Handler: create/app.handler
+      Timeout: 30
+      MemorySize: 512
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - chime:CreateMeeting
+                - chime:CreateAttendee
+                - chime:TagResource
+                - transcribe:StartMeetingTranscription
+              Resource: '*'
+      Events:
+        CreateHuddle:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/huddles
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - create/app.ts
+        External:
+          - '@aws-sdk/*'
+
+  # END HUDDLE
+  EndHuddleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/huddles
+      Handler: end/app.handler
+      Timeout: 30
+      MemorySize: 256
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - chime:DeleteMeeting
+              Resource: '*'
+      Events:
+        EndHuddle:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/huddles/{huddleId}/end
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - end/app.ts
+        External:
+          - '@aws-sdk/*'
+
+  # JOIN HUDDLE
+  JoinHuddleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/huddles
+      Handler: join/app.handler
+      Timeout: 30
+      MemorySize: 256
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - chime:CreateAttendee
+              Resource: '*'
+      Events:
+        JoinHuddle:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/huddles/{huddleId}/join
+            Method: post
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - join/app.ts
+        External:
+          - '@aws-sdk/*'
+
+  # GET HUDDLE DETAILS
+  GetHuddleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/huddles
+      Handler: get/app.handler
+      Timeout: 30
+      MemorySize: 256
+      Policies:
+        - AWSLambdaBasicExecutionRole
+      Events:
+        GetHuddle:
+          Type: Api
+          Properties:
+            Path: /workspaces/{workspaceId}/huddles/{huddleId}
+            Method: get
+            RestApiId: !Ref MainApi
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - get/app.ts
+
+  # TRANSCRIPT CONSUMER
+  TranscriptConsumerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/huddles
+      Handler: transcript-consumer/app.handler
+      Timeout: 60
+      MemorySize: 256
+      Policies:
+        - AWSLambdaBasicExecutionRole
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - transcript-consumer/app.ts
+
+  # EMBEDDING GENERATOR
+  HuddleEmbeddingGeneratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/huddles
+      Handler: embedding-generator/app.handler
+      Timeout: 900  # 15 minutes for processing embeddings
+      MemorySize: 1024
+      Policies:
+        - AWSLambdaBasicExecutionRole
+      Environment:
+        Variables:
+          EMBEDDING_MODEL: 'text-embedding-3-small'
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2024
+        EntryPoints:
+          - embedding-generator/app.ts
+
+  # EventBridge Rule for Chime Transcription Events
+  ChimeTranscriptionEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "Capture Chime SDK transcription events"
+      EventPattern:
+        source: ["aws.chime"]
+        detail-type: ["Chime Meeting Transcription Event"]
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt TranscriptConsumerFunction.Arn
+          Id: "TranscriptConsumerTarget"
+
+  # EventBridge Rule for Huddle Embedding Generation (scheduled)
+  HuddleEmbeddingScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "Scheduled processing of huddle embeddings"
+      ScheduleExpression: 'rate(10 minutes)'
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt HuddleEmbeddingGeneratorFunction.Arn
+          Id: "HuddleEmbeddingGeneratorTarget"
+
+  # Permission for EventBridge to invoke TranscriptConsumerFunction
+  TranscriptConsumerInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TranscriptConsumerFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ChimeTranscriptionEventRule.Arn
+
+  # Permission for EventBridge to invoke HuddleEmbeddingGeneratorFunction
+  HuddleEmbeddingGeneratorInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref HuddleEmbeddingGeneratorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt HuddleEmbeddingScheduleRule.Arn
+
 Outputs:
   # Function URL for streaming
   StreamingFunctionUrl:
