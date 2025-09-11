@@ -100,8 +100,8 @@ export const handler = withCors(
           ExternalUserId: member.id,
           Capabilities: {
             Audio: 'SendReceive',
-            Video: 'SendReceive',
-            Content: 'SendReceive',
+            Video: 'None',
+            Content: 'None',
           },
         });
 
