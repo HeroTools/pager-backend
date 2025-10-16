@@ -2,10 +2,17 @@
 
 import {
   CreateSecretCommand,
+  DeleteSecretCommand,
   DescribeSecretCommand,
   PutSecretValueCommand,
   SecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager';
+import {
+  DeleteParameterCommand,
+  GetParameterCommand,
+  PutParameterCommand,
+  SSMClient,
+} from '@aws-sdk/client-ssm';
 import { fromIni } from '@aws-sdk/credential-provider-ini';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
@@ -16,12 +23,14 @@ const REGION = process.env.AWS_REGION || 'us-east-2';
 
 const creds = fromIni({ profile: PROFILE });
 const client = new SecretsManagerClient({ region: REGION, credentials: creds });
+const ssm = new SSMClient({ region: REGION, credentials: creds });
 
 // --- Types ----------------------------------------------------------------
 interface Parameter {
   name: string;
   value: string;
   required?: boolean;
+  type?: 'String' | 'SecureString';
 }
 
 interface EnvironmentConfig {
@@ -67,9 +76,63 @@ async function upsertSecret(name: string, value: string) {
   }
 }
 
+async function deleteSecret(name: string) {
+  try {
+    await client.send(new DeleteSecretCommand({ SecretId: name, ForceDeleteWithoutRecovery: true }));
+    console.log(`🗑️  Deleted secret: ${name}`);
+  } catch (err: any) {
+    if (err.name === 'ResourceNotFoundException') {
+      console.log(`ℹ️  Secret not found (skipped): ${name}`);
+    } else {
+      console.error(`❌ Error deleting secret ${name}:`, err);
+      process.exit(1);
+    }
+  }
+}
+
+async function upsertSsmParameter(name: string, value: string) {
+  try {
+    const existing = await ssm.send(new GetParameterCommand({ Name: name }));
+    if (existing.Parameter?.Value === value) {
+      console.log(`✔️  SSM parameter up-to-date: ${name}`);
+      return;
+    }
+
+    await ssm.send(
+      new PutParameterCommand({ Name: name, Value: value, Type: 'String', Overwrite: true }),
+    );
+    console.log(`🔄 Updated SSM parameter: ${name}`);
+  } catch (err: any) {
+    if (err.name === 'ParameterNotFound') {
+      await ssm.send(
+        new PutParameterCommand({ Name: name, Value: value, Type: 'String', Overwrite: false }),
+      );
+      console.log(`✅ Created SSM parameter: ${name}`);
+    } else {
+      console.error(`❌ Error on upsertSsmParameter(${name}):`, err);
+      process.exit(1);
+    }
+  }
+}
+
+async function deleteSsmParameter(name: string) {
+  try {
+    await ssm.send(new DeleteParameterCommand({ Name: name }));
+    console.log(`🗑️  Deleted SSM parameter: ${name}`);
+  } catch (err: any) {
+    if (err.name === 'ParameterNotFound') {
+      console.log(`ℹ️  SSM parameter not found (skipped): ${name}`);
+    } else {
+      console.error(`❌ Error deleting SSM parameter ${name}:`, err);
+      process.exit(1);
+    }
+  }
+}
+
 // --- Main ----------------------------------------------------------------
 async function main() {
   const environment = process.argv[2] || 'dev';
+  const isDeleteMode = process.argv.includes('--delete');
   if (!['dev', 'prod'].includes(environment)) {
     console.error("❌ Invalid environment. Must be 'dev' or 'prod'");
     process.exit(1);
@@ -84,10 +147,14 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`🔐 Syncing Secrets Manager entries for environment: ${environment}`);
+  console.log(
+    isDeleteMode
+      ? `🧹 Removing parameter entries for environment: ${environment}`
+      : `🔐 Syncing parameter entries for environment: ${environment}`,
+  );
 
   for (const p of params) {
-    const { name, value, required } = p;
+    const { name, value, required, type = 'SecureString' } = p;
     if (!value || value === 'CHANGE_ME') {
       if (required) {
         console.error(`❌ Required secret "/${stackName}/${environment}/${name}" has no value`);
@@ -99,10 +166,22 @@ async function main() {
     }
 
     const fullName = `/${stackName}/${environment}/${name}`;
-    await upsertSecret(fullName, value);
+    if (type === 'String') {
+      if (isDeleteMode) {
+        await deleteSsmParameter(fullName);
+      } else {
+        await upsertSsmParameter(fullName, value);
+      }
+    } else {
+      if (isDeleteMode) {
+        await deleteSecret(fullName);
+      } else {
+        await upsertSecret(fullName, value);
+      }
+    }
   }
 
-  console.log(`🎉 All secrets in sync!`);
+  console.log(isDeleteMode ? `✅ Parameter cleanup complete!` : `🎉 All parameters in sync!`);
 }
 
 main().catch((err) => {

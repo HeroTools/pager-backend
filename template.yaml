@@ -43,15 +43,15 @@ Globals:
         DEPLOYMENT_VERSION: !Ref DeploymentVersion
         ENVIRONMENT: !Ref Environment
         OPENAI_API_KEY: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/openai-api-key:SecretString}}'
-        GOOGLE_CLIENT_ID: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/google-client-id:SecretString}}'
-        SUPABASE_URL: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/supabase-url:SecretString}}'
-        SUPABASE_ANON_KEY: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/supabase-anon-key:SecretString}}'
+        GOOGLE_CLIENT_ID: !Sub '{{resolve:ssm:/${StackName}/${Environment}/google-client-id}}'
+        SUPABASE_URL: !Sub '{{resolve:ssm:/${StackName}/${Environment}/supabase-url}}'
+        SUPABASE_ANON_KEY: !Sub '{{resolve:ssm:/${StackName}/${Environment}/supabase-anon-key}}'
         SUPABASE_SERVICE_ROLE_KEY: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/supabase-service-role-key:SecretString}}'
-        PG_USER: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-user:SecretString}}'
-        PG_HOST: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-host:SecretString}}'
-        PG_DATABASE: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-database:SecretString}}'
+        PG_USER: !Sub '{{resolve:ssm:/${StackName}/${Environment}/pg-user}}'
+        PG_HOST: !Sub '{{resolve:ssm:/${StackName}/${Environment}/pg-host}}'
+        PG_DATABASE: !Sub '{{resolve:ssm:/${StackName}/${Environment}/pg-database}}'
         PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-password:SecretString}}'
-        PG_PORT: !Sub '{{resolve:secretsmanager:/${StackName}/${Environment}/pg-port:SecretString}}'
+        PG_PORT: !Sub '{{resolve:ssm:/${StackName}/${Environment}/pg-port}}'
         LOCAL_WEBHOOK_API_URL: !Sub 'https://f2b3turp1j.execute-api.us-east-2.amazonaws.com/${Environment}'
         VERCEL_PROJECTS: pager-frontend
         ALLOW_VERCEL_PREVIEWS: true
@@ -1425,7 +1425,7 @@ Resources:
   EmbeddingScheduleRule:
     Type: AWS::Events::Rule
     Properties:
-      ScheduleExpression: 'rate(2 minutes)'
+      ScheduleExpression: 'rate(1 day)'
       State: ENABLED
       Targets:
         - Arn: !GetAtt EmbeddingOrchestratorFunction.Arn

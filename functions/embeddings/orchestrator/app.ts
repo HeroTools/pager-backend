@@ -32,6 +32,15 @@ interface WorkspaceBatch {
 export const handler: ScheduledHandler = async (event, context) => {
   console.log('Embedding orchestrator started');
 
+  const environment = process.env.ENVIRONMENT || 'dev';
+  if (environment !== 'prod') {
+    console.log(`Skipping embedding orchestration in ${environment} environment`);
+    return successResponse({
+      message: `Embedding orchestration disabled for ${environment}`,
+      data: { processedCount: 0, skipped: true },
+    });
+  }
+
   try {
     const messages = await fetchAndClaimMessages();
     if (messages.length === 0) {

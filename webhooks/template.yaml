@@ -40,14 +40,14 @@ Globals:
     Environment:
       Variables:
         DEPLOYMENT_VERSION: !Ref DeploymentVersion
-        SUPABASE_URL: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/supabase-url:SecretString}}'
-        SUPABASE_ANON_KEY: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/supabase-anon-key:SecretString}}'
+        SUPABASE_URL: !Sub '{{resolve:ssm:/${MainStackName}/${Environment}/supabase-url}}'
+        SUPABASE_ANON_KEY: !Sub '{{resolve:ssm:/${MainStackName}/${Environment}/supabase-anon-key}}'
         SUPABASE_SERVICE_ROLE_KEY: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/supabase-service-role-key:SecretString}}'
-        PG_USER: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/pg-user:SecretString}}'
-        PG_HOST: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/pg-host:SecretString}}'
-        PG_DATABASE: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/pg-database:SecretString}}'
+        PG_USER: !Sub '{{resolve:ssm:/${MainStackName}/${Environment}/pg-user}}'
+        PG_HOST: !Sub '{{resolve:ssm:/${MainStackName}/${Environment}/pg-host}}'
+        PG_DATABASE: !Sub '{{resolve:ssm:/${MainStackName}/${Environment}/pg-database}}'
         PG_PASSWORD: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/pg-password:SecretString}}'
-        PG_PORT: !Sub '{{resolve:secretsmanager:/${MainStackName}/${Environment}/pg-port:SecretString}}'
+        PG_PORT: !Sub '{{resolve:ssm:/${MainStackName}/${Environment}/pg-port}}'
 
 Resources:
   WebhookApi:
